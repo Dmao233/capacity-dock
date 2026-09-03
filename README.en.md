@@ -87,7 +87,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.1
+Scripts/package-app.sh 0.1.2
 open .build/dist/CapacityDock.app
 ```
 
@@ -107,7 +107,7 @@ swift run
    - **Keep Expanded**: rest shows every selected ring; the card still closes on leave
    - **Dock to Edge**: Left / Right / Top / Bottom
    - **Hide Capacity Dock**: remove it from the screen; restore from the status item
-6. Click the external gear, or **Capacity Dock Settings…** in the status menu.
+6. Click the external gear, or **Capacity Dock Settings…** in the status menu. Settings can check GitHub for a newer release.
 
 Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
 

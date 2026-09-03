@@ -1,8 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct CapacityDockSettingsView: View {
     var store: CapacityDockStore
     @State private var snapshot = CapacityDockPreferences.load()
+    @State private var updateResult: UpdateCheckResult?
+    @State private var isCheckingUpdate = false
 
     var body: some View {
         Form {
@@ -86,12 +89,81 @@ struct CapacityDockSettingsView: View {
             } header: {
                 Text("Data")
             }
+
+            Section {
+                LabeledContent("Version", value: AppVersion.current)
+                Button("Check for Updates") {
+                    Task { await checkForUpdates() }
+                }
+                .disabled(isCheckingUpdate)
+                updateStatus
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("Checks the latest GitHub Release. New builds are ad-hoc signed, so replace the app from the zip rather than using a Sparkle feed.")
+            }
         }
         .formStyle(.grouped)
         .padding()
+        .onAppear {
+            if updateResult == nil {
+                Task { await checkForUpdates() }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .capacityDockPreferencesDidChange)) { _ in
             snapshot = CapacityDockPreferences.load()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .capacityDockCheckForUpdates)) { _ in
+            Task { await checkForUpdates() }
+        }
+    }
+
+    @ViewBuilder
+    private var updateStatus: some View {
+        if isCheckingUpdate {
+            HStack {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking…")
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            switch updateResult {
+            case .upToDate(_, let latest):
+                Text(
+                    String(
+                        format: NSLocalizedString("You’re up to date (%@).", comment: ""),
+                        latest
+                    )
+                )
+                    .foregroundStyle(.secondary)
+            case .available(let release):
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(
+                        String(
+                            format: NSLocalizedString("%@ is available", comment: ""),
+                            release.version
+                        )
+                    )
+                    Button("Open Release Page") {
+                        if let url = URL(string: release.htmlURL) {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                }
+            case .failed(let message):
+                Text(message)
+                    .foregroundStyle(.red)
+            case .none:
+                EmptyView()
+            }
+        }
+    }
+
+    private func checkForUpdates() async {
+        isCheckingUpdate = true
+        defer { isCheckingUpdate = false }
+        updateResult = await UpdateChecker.check()
     }
 
     private var enabledBinding: Binding<Bool> {

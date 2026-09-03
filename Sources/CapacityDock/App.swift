@@ -74,6 +74,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             action: #selector(openSettings),
             keyEquivalent: ","
         ))
+        menu.addItem(NSMenuItem(
+            title: NSLocalizedString("Check for Updates", comment: ""),
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        ))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(
             title: NSLocalizedString("Quit Capacity Dock", comment: ""),
@@ -95,6 +100,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
+    }
+
+    @objc func checkForUpdates() {
+        openSettings()
+        NotificationCenter.default.post(name: .capacityDockCheckForUpdates, object: nil)
     }
 
     private func ensureSettingsWindow() -> NSWindow {

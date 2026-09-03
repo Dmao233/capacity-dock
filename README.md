@@ -87,7 +87,7 @@ xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.1
+Scripts/package-app.sh 0.1.2
 open .build/dist/CapacityDock.app
 ```
 
@@ -107,7 +107,7 @@ swift run
    - **常驻展开**：待机就显示全部已选环，详情仍随鼠标关
    - **停靠到边缘**：左 / 右 / 上 / 下
    - **隐藏侧边额度栏**：从屏幕拿掉，用菜单栏入口再打开
-6. 点槽外的设置齿轮，或菜单栏里的「侧边额度栏设置…」。
+6. 点槽外的设置齿轮，或菜单栏里的「侧边额度栏设置…」。设置里可以检查 GitHub 上的新版本。
 
 拖动槽可以换边。贴到边缘会重新长出勺形接触；拉到桌面中间则变成圆角胶囊，设置条改到尾部。
 

@@ -437,4 +437,5 @@ enum CapacityDockPreferences {
 extension Notification.Name {
     static let capacityDockPreferencesDidChange = Notification.Name("com.dmao233.capacityDockPreferencesDidChange")
     static let capacityDockOpenProviderSettings = Notification.Name("com.dmao233.capacityDockOpenProviderSettings")
+    static let capacityDockCheckForUpdates = Notification.Name("com.dmao233.capacityDockCheckForUpdates")
 }

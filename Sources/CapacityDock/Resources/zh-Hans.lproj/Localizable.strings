@@ -18,6 +18,14 @@
 "Display" = "显示";
 "Data" = "数据";
 "Reload quota.json" = "重新加载 quota.json";
+"Updates" = "更新";
+"Version" = "版本";
+"Check for Updates" = "检查更新";
+"Checking…" = "正在检查…";
+"Open Release Page" = "打开发布页";
+"You’re up to date (%@)." = "已是最新版本（%@）。";
+"%@ is available" = "有新版本 %@";
+"Checks the latest GitHub Release. New builds are ad-hoc signed, so replace the app from the zip rather than using a Sparkle feed." = "对照 GitHub Release 检查更新。新版本仍是 ad-hoc 签名，请用 zip 替换应用，没有 Sparkle 自动安装。";
 "Connect" = "连接";
 "Reconnect" = "重新连接";
 "Add API Key" = "添加 API 密钥";
