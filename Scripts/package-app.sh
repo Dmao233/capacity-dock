@@ -15,8 +15,12 @@ EXECUTABLE_NAME="CapacityDock"
 MIN_MACOS="14.0"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Documents/ is often iCloud-synced; FinderInfo/fileprovider xattrs
+# break codesign. Assemble on a local temp volume, then copy the zip back.
+STAGE_DIR="$(mktemp -d /tmp/capacity-dock-pack.XXXXXX)"
 DIST_DIR="${ROOT}/.build/dist"
 ICON_SOURCE="${ROOT}/assets/icon.png"
+trap 'rm -rf "${STAGE_DIR}"' EXIT
 
 cd "${ROOT}"
 
@@ -34,13 +38,13 @@ echo "▸ Assembling ${BUNDLE_NAME}..."
 export COPYFILE_DISABLE=1
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}"
-BUNDLE="${DIST_DIR}/${BUNDLE_NAME}"
+BUNDLE="${STAGE_DIR}/${BUNDLE_NAME}"
 mkdir -p "${BUNDLE}/Contents/MacOS"
 mkdir -p "${BUNDLE}/Contents/Resources"
 ditto --norsrc --noextattr "${BUILT_BINARY}" "${BUNDLE}/Contents/MacOS/${EXECUTABLE_NAME}"
 
 if [[ -f "${ICON_SOURCE}" ]]; then
-  ICONSET="${DIST_DIR}/AppIcon.iconset"
+  ICONSET="${STAGE_DIR}/AppIcon.iconset"
   mkdir -p "${ICONSET}"
   sips -z 16 16 "${ICON_SOURCE}" --out "${ICONSET}/icon_16x16.png" >/dev/null
   sips -z 32 32 "${ICON_SOURCE}" --out "${ICONSET}/icon_16x16@2x.png" >/dev/null
@@ -106,7 +110,9 @@ PLIST
 printf 'APPL????' > "${BUNDLE}/Contents/PkgInfo"
 
 echo "▸ Ad-hoc signing..."
-xattr -cr "${BUNDLE}"
+xattr -cr "${BUNDLE}" || true
+find "${BUNDLE}" \( -name '._*' -o -name '.DS_Store' \) -delete
+dot_clean -m "${BUNDLE}" 2>/dev/null || true
 codesign --force --sign - --timestamp=none --deep "${BUNDLE}"
 codesign --verify --deep --strict "${BUNDLE}"
 
@@ -127,13 +133,17 @@ ZIP_NAME="CapacityDock-${VERSION}.zip"
 ZIP_PATH="${DIST_DIR}/${ZIP_NAME}"
 echo "▸ Packaging ${ZIP_NAME}..."
 (
-  cd "${DIST_DIR}"
+  cd "${STAGE_DIR}"
   COPYFILE_DISABLE=1 /usr/bin/ditto -c -k --norsrc --keepParent "${BUNDLE_NAME}" "${ZIP_NAME}"
   shasum -a 256 "${ZIP_NAME}" > "${ZIP_NAME}.sha256"
 )
+mkdir -p "${DIST_DIR}"
+ditto --norsrc --noextattr "${STAGE_DIR}/${ZIP_NAME}" "${ZIP_PATH}"
+ditto --norsrc --noextattr "${STAGE_DIR}/${ZIP_NAME}.sha256" "${ZIP_PATH}.sha256"
+ditto --norsrc --noextattr "${BUNDLE}" "${DIST_DIR}/${BUNDLE_NAME}"
 
 echo ""
-echo "✓ ${BUNDLE}"
+echo "✓ ${DIST_DIR}/${BUNDLE_NAME}"
 echo "✓ ${ZIP_PATH}"
 cat "${ZIP_PATH}.sha256"
 ls -lh "${DIST_DIR}"
