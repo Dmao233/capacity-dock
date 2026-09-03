@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift version
+        run: swift --version
+      - name: Test
+        run: swift test
+      - name: Package
+        run: Scripts/package-app.sh "${GITHUB_REF_NAME}"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          ZIP=".build/dist/CapacityDock-${VERSION}.zip"
+          SUM="${ZIP}.sha256"
+          NOTES="$(mktemp)"
+          {
+            echo "## Capacity Dock ${VERSION}"
+            echo
+            echo "macOS 14+ 通用二进制（arm64 + x86_64），ad-hoc 签名。"
+            echo
+            echo "浏览器下载后若无法打开："
+            echo
+            echo '```bash'
+            echo "xattr -d com.apple.quarantine ~/Downloads/CapacityDock.app"
+            echo '```'
+            echo
+            echo "Checksum:"
+            echo
+            echo '```'
+            cat "${SUM}"
+            echo '```'
+          } > "${NOTES}"
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" "${ZIP}" "${SUM}" --clobber
+          else
+            gh release create "${TAG}" "${ZIP}" "${SUM}" \
+              --title "Capacity Dock ${VERSION}" \
+              --notes-file "${NOTES}"
+          fi

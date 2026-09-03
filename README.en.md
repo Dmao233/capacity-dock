@@ -10,11 +10,19 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Dmao233/capacity-dock/releases/latest"><img src="https://img.shields.io/github/v/release/Dmao233/capacity-dock" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/docs-简体中文-lightgrey.svg" alt="简体中文"></a>
+</p>
+
+<p align="center">
   <a href="README.md">简体中文</a>
   ·
   <a href="#install">Install</a>
   ·
   <a href="#usage">Usage</a>
+  ·
+  <a href="https://github.com/Dmao233/capacity-dock/releases/latest">Download</a>
   ·
   <a href="LICENSE">MIT</a>
 </p>
@@ -53,7 +61,25 @@ This repository packages that surface as a small, buildable app. Rail geometry, 
 
 ## Install
 
-Needs **macOS 14 Sonoma** or later, and **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)).
+Needs **macOS 14 Sonoma** or later.
+
+### Download
+
+Grab `CapacityDock-*.zip` from [Releases](https://github.com/Dmao233/capacity-dock/releases/latest), unzip, and drop `CapacityDock.app` into `/Applications` or `~/Applications`.
+
+The build is an ad-hoc-signed universal binary (Apple Silicon + Intel). After a browser download Gatekeeper may block the first launch. Either:
+
+```bash
+xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
+```
+
+or **Right-click → Open** in Finder.
+
+The app is an `LSUIElement`, so it never appears in the Dock. A `◉` status item can show the rail again, open Settings, or quit.
+
+### Build from source
+
+Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)).
 
 ```bash
 git clone https://github.com/Dmao233/capacity-dock.git
@@ -68,8 +94,6 @@ For day-to-day development:
 ```bash
 swift run
 ```
-
-The app is an `LSUIElement`, so it never appears in the Dock. A `◉` status item can show the rail again, open Settings, or quit.
 
 ## Usage
 

@@ -10,11 +10,19 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Dmao233/capacity-dock/releases/latest"><img src="https://img.shields.io/github/v/release/Dmao233/capacity-dock" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+  <a href="README.en.md"><img src="https://img.shields.io/badge/docs-English-lightgrey.svg" alt="English"></a>
+</p>
+
+<p align="center">
   <a href="README.en.md">English</a>
   ·
   <a href="#安装">安装</a>
   ·
   <a href="#使用">使用</a>
+  ·
+  <a href="https://github.com/Dmao233/capacity-dock/releases/latest">下载</a>
   ·
   <a href="LICENSE">MIT</a>
 </p>
@@ -53,7 +61,25 @@ Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）�
 
 ## 安装
 
-需要 **macOS 14 Sonoma** 或更新，以及 **Swift 6**（随 Xcode 16 或 [swift.org](https://www.swift.org/install/macos/)）。
+需要 **macOS 14 Sonoma** 或更新。
+
+### 下载安装包
+
+从 [Releases](https://github.com/Dmao233/capacity-dock/releases/latest) 下载 `CapacityDock-*.zip`，解压后把 `CapacityDock.app` 拖进 `/Applications` 或 `~/Applications`，再双击打开。
+
+这是 ad-hoc 签名的通用二进制（Apple Silicon + Intel）。浏览器下载后 Gatekeeper 可能会拦一次，任选一种方式放行：
+
+```bash
+xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
+```
+
+或在 Finder 里对应用 **右键 → 打开**。
+
+应用是 `LSUIElement`，不会出现在 Dock。菜单栏右侧会有一个 `◉` 入口，用来重新显示、打开设置或退出。
+
+### 从源码构建
+
+需要 **Swift 6**（随 Xcode 16 或 [swift.org](https://www.swift.org/install/macos/)）。
 
 ```bash
 git clone https://github.com/Dmao233/capacity-dock.git
@@ -68,8 +94,6 @@ open .build/dist/CapacityDock.app
 ```bash
 swift run
 ```
-
-应用是 `LSUIElement`，不会出现在 Dock。菜单栏右侧会有一个 `◉` 入口，用来重新显示、打开设置或退出。
 
 ## 使用
 
