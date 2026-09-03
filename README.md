@@ -67,15 +67,20 @@ Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）�
 
 ### 下载安装包
 
-从 [Releases](https://github.com/Dmao233/capacity-dock/releases/latest) 下载 `CapacityDock-*.zip`，解压后把 `CapacityDock.app` 拖进 `/Applications` 或 `~/Applications`，再双击打开。
+从 [Releases](https://github.com/Dmao233/capacity-dock/releases/latest) 下载其一：
 
-这是 ad-hoc 签名的通用二进制（Apple Silicon + Intel）。浏览器下载后 Gatekeeper 可能会拦一次，任选一种方式放行：
+| 文件 | 用法 |
+| --- | --- |
+| `CapacityDock-*.pkg` | 双击安装到 `/Applications`，装完会自动打开 |
+| `CapacityDock-*.dmg` | 打开后把应用拖到 **Applications** |
+| `CapacityDock-*.zip` | 解压后把 `CapacityDock.app` 拖进 `/Applications` |
+
+这是 ad-hoc 签名的通用二进制（Apple Silicon + Intel）。浏览器下载后 Gatekeeper 可能会拦一次：在 Finder 里对 `.pkg` / 应用 **右键 → 打开**，或：
 
 ```bash
-xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
+xattr -d com.apple.quarantine ~/Downloads/CapacityDock-*.pkg
+xattr -d com.apple.quarantine /Applications/CapacityDock.app
 ```
-
-或在 Finder 里对应用 **右键 → 打开**。
 
 应用是 `LSUIElement`，不会出现在 Dock。菜单栏右侧会有一个 `◉` 入口，用来重新显示、打开设置或退出。
 

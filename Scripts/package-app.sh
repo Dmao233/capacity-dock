@@ -129,21 +129,55 @@ if command -v vtool >/dev/null 2>&1; then
   fi
 fi
 
+PKG_NAME="CapacityDock-${VERSION}.pkg"
+DMG_NAME="CapacityDock-${VERSION}.dmg"
 ZIP_NAME="CapacityDock-${VERSION}.zip"
-ZIP_PATH="${DIST_DIR}/${ZIP_NAME}"
-echo "▸ Packaging ${ZIP_NAME}..."
+
+echo "▸ Building installer pkg..."
+SCRIPTS_DIR="${STAGE_DIR}/pkg-scripts"
+mkdir -p "${SCRIPTS_DIR}"
+cat > "${SCRIPTS_DIR}/postinstall" <<'POST'
+#!/bin/bash
+open -a "/Applications/CapacityDock.app" >/dev/null 2>&1 || true
+exit 0
+POST
+chmod 755 "${SCRIPTS_DIR}/postinstall"
+pkgbuild \
+  --identifier "${BUNDLE_ID}" \
+  --version "${VERSION}" \
+  --install-location /Applications \
+  --component "${BUNDLE}" \
+  --scripts "${SCRIPTS_DIR}" \
+  "${STAGE_DIR}/${PKG_NAME}"
+
+echo "▸ Building disk image..."
+DMG_ROOT="${STAGE_DIR}/dmgroot"
+mkdir -p "${DMG_ROOT}"
+ditto --norsrc --noextattr "${BUNDLE}" "${DMG_ROOT}/${BUNDLE_NAME}"
+ln -s /Applications "${DMG_ROOT}/Applications"
+hdiutil create \
+  -volname "Capacity Dock ${VERSION}" \
+  -srcfolder "${DMG_ROOT}" \
+  -ov -format UDZO \
+  "${STAGE_DIR}/${DMG_NAME}" >/dev/null
+
+echo "▸ Packaging zip..."
 (
   cd "${STAGE_DIR}"
   COPYFILE_DISABLE=1 /usr/bin/ditto -c -k --norsrc --keepParent "${BUNDLE_NAME}" "${ZIP_NAME}"
-  shasum -a 256 "${ZIP_NAME}" > "${ZIP_NAME}.sha256"
+  shasum -a 256 "${PKG_NAME}" "${DMG_NAME}" "${ZIP_NAME}" > "SHA256SUMS"
 )
+
 mkdir -p "${DIST_DIR}"
-ditto --norsrc --noextattr "${STAGE_DIR}/${ZIP_NAME}" "${ZIP_PATH}"
-ditto --norsrc --noextattr "${STAGE_DIR}/${ZIP_NAME}.sha256" "${ZIP_PATH}.sha256"
+for artifact in "${PKG_NAME}" "${DMG_NAME}" "${ZIP_NAME}" SHA256SUMS; do
+  ditto --norsrc --noextattr "${STAGE_DIR}/${artifact}" "${DIST_DIR}/${artifact}"
+done
 ditto --norsrc --noextattr "${BUNDLE}" "${DIST_DIR}/${BUNDLE_NAME}"
 
 echo ""
 echo "✓ ${DIST_DIR}/${BUNDLE_NAME}"
-echo "✓ ${ZIP_PATH}"
-cat "${ZIP_PATH}.sha256"
+echo "✓ ${DIST_DIR}/${PKG_NAME}"
+echo "✓ ${DIST_DIR}/${DMG_NAME}"
+echo "✓ ${DIST_DIR}/${ZIP_NAME}"
+cat "${DIST_DIR}/SHA256SUMS"
 ls -lh "${DIST_DIR}"

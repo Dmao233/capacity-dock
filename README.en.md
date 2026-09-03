@@ -67,15 +67,20 @@ Needs **macOS 14 Sonoma** or later.
 
 ### Download
 
-Grab `CapacityDock-*.zip` from [Releases](https://github.com/Dmao233/capacity-dock/releases/latest), unzip, and drop `CapacityDock.app` into `/Applications` or `~/Applications`.
+From [Releases](https://github.com/Dmao233/capacity-dock/releases/latest) grab one of:
 
-The build is an ad-hoc-signed universal binary (Apple Silicon + Intel). After a browser download Gatekeeper may block the first launch. Either:
+| File | How to install |
+| --- | --- |
+| `CapacityDock-*.pkg` | Double-click to install into `/Applications`, then it launches |
+| `CapacityDock-*.dmg` | Open and drag the app onto **Applications** |
+| `CapacityDock-*.zip` | Unzip and drop `CapacityDock.app` into `/Applications` |
+
+The build is an ad-hoc-signed universal binary (Apple Silicon + Intel). After a browser download Gatekeeper may block the first launch: **Right-click → Open** the `.pkg` or app, or:
 
 ```bash
-xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
+xattr -d com.apple.quarantine ~/Downloads/CapacityDock-*.pkg
+xattr -d com.apple.quarantine /Applications/CapacityDock.app
 ```
-
-or **Right-click → Open** in Finder.
 
 The app is an `LSUIElement`, so it never appears in the Dock. A `◉` status item can show the rail again, open Settings, or quit.
 

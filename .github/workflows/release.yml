@@ -26,30 +26,38 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          ZIP=".build/dist/CapacityDock-${VERSION}.zip"
-          SUM="${ZIP}.sha256"
+          DIST=".build/dist"
+          PKG="${DIST}/CapacityDock-${VERSION}.pkg"
+          DMG="${DIST}/CapacityDock-${VERSION}.dmg"
+          ZIP="${DIST}/CapacityDock-${VERSION}.zip"
+          SUMS="${DIST}/SHA256SUMS"
           NOTES="$(mktemp)"
           {
             echo "## Capacity Dock ${VERSION}"
             echo
             echo "macOS 14+ 通用二进制（arm64 + x86_64），ad-hoc 签名。"
             echo
-            echo "浏览器下载后若无法打开："
+            echo "- \`CapacityDock-${VERSION}.pkg\` — 双击安装到 /Applications"
+            echo "- \`CapacityDock-${VERSION}.dmg\` — 拖到 Applications"
+            echo "- \`CapacityDock-${VERSION}.zip\` — 解压后拷贝 .app"
+            echo
+            echo "浏览器下载后若无法打开，对安装包 **右键 → 打开**，或："
             echo
             echo '```bash'
-            echo "xattr -d com.apple.quarantine ~/Downloads/CapacityDock.app"
+            echo "xattr -d com.apple.quarantine ~/Downloads/CapacityDock-${VERSION}.pkg"
             echo '```'
             echo
             echo "Checksum:"
             echo
             echo '```'
-            cat "${SUM}"
+            cat "${SUMS}"
             echo '```'
           } > "${NOTES}"
+          FILES=("${PKG}" "${DMG}" "${ZIP}" "${SUMS}")
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" "${ZIP}" "${SUM}" --clobber
+            gh release upload "${TAG}" "${FILES[@]}" --clobber
           else
-            gh release create "${TAG}" "${ZIP}" "${SUM}" \
+            gh release create "${TAG}" "${FILES[@]}" \
               --title "Capacity Dock ${VERSION}" \
               --notes-file "${NOTES}"
           fi
