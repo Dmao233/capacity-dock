@@ -29,8 +29,13 @@ final class CapacityDockStore: CapacityDockQuotaReading {
             .appendingPathComponent("quota.json")
     }
 
-    static func demo() -> CapacityDockStore {
-        CapacityDockStore(summaries: DemoQuota.summaries)
+    /// Shipping default: no invented usage. Rings show `-` until `quota.json`
+    /// is present. Set `CAPACITY_DOCK_DEMO=1` to load the canned snapshots.
+    static func live() -> CapacityDockStore {
+        if ProcessInfo.processInfo.environment["CAPACITY_DOCK_DEMO"] == "1" {
+            return CapacityDockStore(summaries: DemoQuota.summaries)
+        }
+        return CapacityDockStore(summaries: [:])
     }
 
     func reloadOverlay() {

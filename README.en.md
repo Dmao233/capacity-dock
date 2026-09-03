@@ -47,7 +47,7 @@ Capacity Dock is a macOS 14+ menu-bar accessory (no Dock icon). It parks provide
 - Dock to left / right / top / bottom, or drag it into a floating pill
 - Settings live outside the blob: a short arc that follows the scoop, inflating into a gear on hover
 
-This repository packages that surface as a small, buildable app. Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). Default quotas are demo snapshots; overlay them with `quota.json`.
+This repository packages that surface as a small, buildable app. Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). Rings show `-` until you supply real numbers in `quota.json` — no placeholder usage.
 
 ## Features
 
@@ -87,7 +87,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.0
+Scripts/package-app.sh 0.1.1
 open .build/dist/CapacityDock.app
 ```
 
@@ -113,7 +113,7 @@ Drag to change edges. Contact with an edge grows the scoop; pulling it into the 
 
 ## Quota data
 
-The bundled snapshots are demo data so the notch, rings, and card are visible immediately. To feed your own numbers, write:
+There is no canned usage on first launch; unbound rings show `-`. To feed real numbers, write:
 
 ```
 ~/Library/Application Support/CapacityDock/quota.json

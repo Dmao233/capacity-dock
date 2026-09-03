@@ -6,18 +6,21 @@ struct CapacityDockApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
+        // Accessory apps still need a Scene. Real settings live in an owned
+        // key window; SwiftUI's Settings scene does not present from a
+        // nonactivating LSUIElement.
         Settings {
-            CapacityDockSettingsView(store: appDelegate.store)
-                .frame(minWidth: 420, minHeight: 520)
+            EmptyView()
         }
     }
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = CapacityDockStore.demo()
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    let store = CapacityDockStore.live()
     private var controller: CapacityDockController?
     private var statusItem: NSStatusItem?
+    private var settingsWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -38,6 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard notification.object as? NSWindow === settingsWindow else { return }
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func seedFirstLaunchIfNeeded() {
@@ -82,7 +90,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
+        let window = ensureSettingsWindow()
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+    }
+
+    private func ensureSettingsWindow() -> NSWindow {
+        if let settingsWindow {
+            return settingsWindow
+        }
+        let hosting = NSHostingController(
+            rootView: CapacityDockSettingsView(store: store)
+                .frame(minWidth: 420, minHeight: 520)
+        )
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 580),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = NSLocalizedString("Capacity Dock Settings", comment: "")
+        window.isReleasedWhenClosed = false
+        window.hidesOnDeactivate = false
+        window.level = .floating
+        window.isMovableByWindowBackground = true
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        window.contentViewController = hosting
+        window.delegate = self
+        window.center()
+        settingsWindow = window
+        return window
     }
 }

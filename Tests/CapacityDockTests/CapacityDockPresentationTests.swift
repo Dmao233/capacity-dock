@@ -106,6 +106,8 @@ struct CapacityDockPresentationTests {
         #expect(cap.minY < body.maxY)
         #expect(cap.midX > body.midX)
         #expect(model.panelSize.height == model.bodyLength + CapacityDockMetrics.settingsCapSlot(scale: model.scale))
+        let nestedGear = CGPoint(x: cap.midX, y: cap.minY + 6)
+        #expect(model.containsSettingsCap(nestedGear, in: bounds))
     }
 
     @MainActor

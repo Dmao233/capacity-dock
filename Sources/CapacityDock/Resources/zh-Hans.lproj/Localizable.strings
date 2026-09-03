@@ -1,4 +1,5 @@
 "Capacity Dock" = "侧边额度栏";
+"Capacity Dock Settings" = "侧边额度栏设置";
 "Capacity Dock Settings…" = "侧边额度栏设置…";
 "Show Capacity Dock" = "显示侧边额度栏";
 "Quit Capacity Dock" = "退出侧边额度栏";
@@ -26,3 +27,4 @@
 "Squircle" = "超椭圆";
 "Rest shows the preferred ring. Hover expands the rest; Keep Expanded keeps every selected ring visible while the detail card still follows the pointer." = "待机只显示首选环。悬停展开其余环；常驻展开会一直显示全部已选环，详情卡片仍随鼠标关闭。";
 "Optional overlay: ~/Library/Application Support/CapacityDock/quota.json" = "可选覆盖文件：~/Library/Application Support/CapacityDock/quota.json";
+"Rings show “-” until you add ~/Library/Application Support/CapacityDock/quota.json. This app does not invent usage." = "在写入 ~/Library/Application Support/CapacityDock/quota.json 之前，环上显示“-”，不会伪造用量。";

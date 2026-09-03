@@ -241,6 +241,9 @@ final class CapacityDockViewModel {
     }
 
     func containsSettingsCap(_ point: CGPoint, in bounds: CGRect) -> Bool {
+        if settingsCapFrame(in: bounds).insetBy(dx: -4, dy: -4).contains(point) {
+            return true
+        }
         if settingsCapSlotFrame(in: bounds).insetBy(dx: -1, dy: -1).contains(point) {
             return true
         }

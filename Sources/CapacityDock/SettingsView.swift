@@ -76,7 +76,7 @@ struct CapacityDockSettingsView: View {
             }
 
             Section {
-                Text("Optional overlay: ~/Library/Application Support/CapacityDock/quota.json")
+                Text("Rings show “-” until you add ~/Library/Application Support/CapacityDock/quota.json. This app does not invent usage.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Reload quota.json") {

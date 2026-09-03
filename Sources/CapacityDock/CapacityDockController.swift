@@ -334,7 +334,12 @@ final class CapacityDockController {
                 }
                 self.dismissIfOutside(point: point)
             } else if event.type == .leftMouseDown {
-                self.dismissIfOutside(point: NSEvent.mouseLocation)
+                let point = NSEvent.mouseLocation
+                if self.settingsCapContains(screenPoint: point) {
+                    self.openDockSettings()
+                    return nil
+                }
+                self.dismissIfOutside(point: point)
             }
             return event
         }
@@ -602,6 +607,10 @@ final class CapacityDockController {
             return item
         }
 
+        menu.addItem(addItem("Capacity Dock Settings…") { [weak self] in
+            self?.openDockSettings()
+        })
+        menu.addItem(.separator())
         menu.addItem(addItem(
             "Keep Expanded",
             state: model.preferences.keepExpanded ? .on : .off
@@ -1328,6 +1337,15 @@ final class CapacityDockController {
         guard let railPanel, railPanel.frame.contains(screenPoint) else { return false }
         let local = swiftUILocalPoint(screenPoint, in: railPanel.frame)
         return model.containsPointer(
+            local,
+            in: CGRect(origin: .zero, size: railPanel.frame.size)
+        )
+    }
+
+    private func settingsCapContains(screenPoint: CGPoint) -> Bool {
+        guard let railPanel, railPanel.frame.contains(screenPoint) else { return false }
+        let local = swiftUILocalPoint(screenPoint, in: railPanel.frame)
+        return model.containsSettingsCap(
             local,
             in: CGRect(origin: .zero, size: railPanel.frame.size)
         )

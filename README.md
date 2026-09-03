@@ -47,7 +47,7 @@ Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）�
 - 停靠在左 / 右 / 上 / 下，或拖成独立胶囊
 - 设置齿轮活在槽外：贴着底部勺形弧的短弧，悬停胀成齿轮
 
-本仓库把这套表面做成可独立编译、可安装的小工具。几何、悬停和详情卡片源码来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。默认配额是演示数据，可用 `quota.json` 覆盖成你自己的数字。
+本仓库把这套表面做成可独立编译、可安装的小工具。几何、悬停和详情卡片源码来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。开箱环上是 `-`，不是假用量；把真实数字写进 `quota.json`。
 
 ## 功能
 
@@ -87,7 +87,7 @@ xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.0
+Scripts/package-app.sh 0.1.1
 open .build/dist/CapacityDock.app
 ```
 
@@ -113,7 +113,7 @@ swift run
 
 ## 配额数据
 
-开箱是演示快照，方便你立刻看到槽、环和卡片。要把数字换成自己的，写：
+开箱没有占位数字，未绑定显示 `-`。要填入真实用量，写：
 
 ```
 ~/Library/Application Support/CapacityDock/quota.json
