@@ -1188,6 +1188,7 @@ private struct CapacityDockNativeGlassSurface<S: Shape>: View {
     let shape: S
 
     var body: some View {
+        #if compiler(>=6.2)
         Color.clear
             .glassEffect(.regular.interactive(), in: shape)
             // Native glass tracks the wallpaper, so over a light background it
@@ -1195,6 +1196,11 @@ private struct CapacityDockNativeGlassSurface<S: Shape>: View {
             // the surface dark enough for the labels on any background while still
             // reading as glass.
             .overlay(shape.fill(Color.black.opacity(0.24)))
+        #else
+        shape
+            .fill(.ultraThinMaterial)
+            .overlay(shape.fill(Color.black.opacity(0.16)))
+        #endif
     }
 }
 
