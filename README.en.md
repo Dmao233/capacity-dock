@@ -87,7 +87,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.2
+Scripts/package-app.sh 0.2.0
 open .build/dist/CapacityDock.app
 ```
 
@@ -113,7 +113,16 @@ Drag to change edges. Contact with an edge grows the scoop; pulling it into the 
 
 ## Quota data
 
-There is no canned usage on first launch; unbound rings show `-`. To feed real numbers, write:
+Codex, Claude, Grok, and Cursor are read from the login already on this Mac. Tokens are not copied into Capacity Dock’s Keychain.
+
+| Provider | How it connects |
+| --- | --- |
+| Codex | Auto if `~/.codex/auth.json` exists (`codex login`) |
+| Grok | Auto if `~/.grok/auth.json` exists (`grok login`) |
+| Cursor | Reads the signed-in Cursor.app session |
+| Claude | Auto if `~/.claude/.credentials.json` exists; Keychain-only logins need Connect once |
+
+Unbound rings show `-`. You can still overlay:
 
 ```
 ~/Library/Application Support/CapacityDock/quota.json
@@ -136,7 +145,7 @@ See [`docs/quota.example.json`](docs/quota.example.json):
 
 `percent` is 0…1. After saving, click **Reload quota.json** in Settings, or relaunch.
 
-Demo providers include Grok, Claude, Copilot, Codex, Gemini, Kimi Code, Cursor, and Antigravity. Live account adapters still live in the CodeBurn menubar app; this repo stays small and compile-from-source.
+Other catalog providers can still be filled via `quota.json`. This app does not invent usage.
 
 ## Develop
 

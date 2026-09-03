@@ -20,12 +20,18 @@ let package = Package(
             ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
+            ],
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
             ]
         ),
         .testTarget(
             name: "CapacityDockTests",
             dependencies: ["CapacityDock"],
-            path: "Tests/CapacityDockTests"
+            path: "Tests/CapacityDockTests",
+            linkerSettings: [
+                .linkedLibrary("sqlite3")
+            ]
         )
     ]
 )

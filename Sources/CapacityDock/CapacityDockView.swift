@@ -113,6 +113,7 @@ final class CapacityDockViewModel {
     var detailTailPosition: CGFloat = 0.5
     var expansionAnchor: CapacityDockExpansionAnchor = .start
     var settingsCapProgress: CGFloat = 0
+    var quotaEpoch: Int = 0
 
     init(preferences: CapacityDockPreferences.Snapshot) {
         self.preferences = preferences
@@ -389,6 +390,7 @@ struct CapacityDockView: View {
     let onDragEnded: () -> Void
 
     var body: some View {
+        let _ = model.quotaEpoch
         let railShape = model.railShape
         let providerLayout = model.isVertical
             ? AnyLayout(VStackLayout(spacing: model.rowSpacing))
@@ -954,6 +956,7 @@ struct CapacityDockDetailView: View {
     let onConnect: (CapacityDockProvider) -> Void
 
     var body: some View {
+        let _ = model.quotaEpoch
         let bubbleShape = CapacityDockBubbleShape(
             tailEdge: model.detailTailEdge,
             tailPosition: model.detailTailPosition

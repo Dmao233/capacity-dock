@@ -79,9 +79,12 @@ struct CapacityDockSettingsView: View {
             }
 
             Section {
-                Text("Rings show “-” until you add ~/Library/Application Support/CapacityDock/quota.json. This app does not invent usage.")
+                Text("Claude, Codex, Grok, and Cursor are read from the login already on this Mac. Sign in with that provider’s app or CLI, then click Refresh. Optional overlay still wins if present.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button("Refresh live quotas") {
+                    Task { await store.refreshLiveProviders(userInitiated: true) }
+                }
                 Button("Reload quota.json") {
                     store.reloadOverlay()
                     snapshot = CapacityDockPreferences.load()

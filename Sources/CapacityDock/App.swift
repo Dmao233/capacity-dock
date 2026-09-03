@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         seedFirstLaunchIfNeeded()
         controller = CapacityDockController(store: store)
         controller?.start()
+        store.start()
         installStatusItem()
         NotificationCenter.default.addObserver(
             forName: .capacityDockOpenProviderSettings,
@@ -51,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func seedFirstLaunchIfNeeded() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: CapacityDockPreferences.selectedProvidersKey) == nil {
-            CapacityDockPreferences.setSelectedProviders([.grok, .claude, .copilot, .codex])
+            CapacityDockPreferences.setSelectedProviders([.grok, .claude, .codex, .cursor])
             CapacityDockPreferences.setPreferredProvider(.grok)
         }
         if defaults.object(forKey: CapacityDockPreferences.enabledKey) == nil {

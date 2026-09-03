@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- 本机自动读取 Codex、Claude、Grok、Cursor 额度（已登录的 CLI / 应用）
+- Claude 若只有钥匙串登录，第一次点 Connect 才会出现系统提示
+- 设置里可手动刷新；`quota.json` 仍可覆盖
+
 ## 0.1.2
 
 - 设置里增加检查更新，对照 GitHub Release

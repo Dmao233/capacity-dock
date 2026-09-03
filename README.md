@@ -87,7 +87,7 @@ xattr -d com.apple.quarantine ~/Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.2
+Scripts/package-app.sh 0.2.0
 open .build/dist/CapacityDock.app
 ```
 
@@ -113,7 +113,16 @@ swift run
 
 ## 配额数据
 
-开箱没有占位数字，未绑定显示 `-`。要填入真实用量，写：
+Codex、Claude、Grok、Cursor 会读本机已经登录的 CLI / 应用，不把 token 再存一份。
+
+| 服务商 | 怎么连上 |
+| --- | --- |
+| Codex | 本机有 `~/.codex/auth.json`（`codex login`）就会自动拉 |
+| Grok | 本机有 `~/.grok/auth.json`（`grok login`）就会自动拉 |
+| Cursor | 已登录 Cursor.app，读它的本地 session |
+| Claude | 有 `~/.claude/.credentials.json` 会自动拉；只有钥匙串时，第一次点详情里的 Connect |
+
+未登录显示 `-`。也可以手写覆盖文件：
 
 ```
 ~/Library/Application Support/CapacityDock/quota.json
@@ -136,7 +145,7 @@ swift run
 
 `percent` 是 0…1。保存后在设置里点「重新加载 quota.json」，或重启应用。
 
-内置演示服务商：Grok、Claude、Copilot、Codex、Gemini、Kimi Code、Cursor、Antigravity 等。真实账号抓取仍在 CodeBurn 菜单栏应用里；本仓库刻意保持小而可编译。
+Copilot 等其余服务商仍可用 `quota.json` 填数。本仓库不伪造用量。
 
 ## 开发
 

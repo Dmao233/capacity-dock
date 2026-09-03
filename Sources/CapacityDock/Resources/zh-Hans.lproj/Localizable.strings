@@ -36,3 +36,5 @@
 "Rest shows the preferred ring. Hover expands the rest; Keep Expanded keeps every selected ring visible while the detail card still follows the pointer." = "待机只显示首选环。悬停展开其余环；常驻展开会一直显示全部已选环，详情卡片仍随鼠标关闭。";
 "Optional overlay: ~/Library/Application Support/CapacityDock/quota.json" = "可选覆盖文件：~/Library/Application Support/CapacityDock/quota.json";
 "Rings show “-” until you add ~/Library/Application Support/CapacityDock/quota.json. This app does not invent usage." = "在写入 ~/Library/Application Support/CapacityDock/quota.json 之前，环上显示“-”，不会伪造用量。";
+"Claude, Codex, Grok, and Cursor are read from the login already on this Mac. Sign in with that provider’s app or CLI, then click Refresh. Optional overlay still wins if present." = "Claude、Codex、Grok、Cursor 读取本机已有登录。用对应应用或 CLI 登录后点刷新。若存在 quota.json 仍以它为准。";
+"Refresh live quotas" = "刷新实时额度";

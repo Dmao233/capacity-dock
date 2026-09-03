@@ -12,8 +12,13 @@ protocol CapacityDockQuotaReading: AnyObject {
 @MainActor
 @Observable
 final class CapacityDockStore: CapacityDockQuotaReading {
+    static let liveProviderIDs: Set<String> = ["claude", "codex", "grok", "cursor"]
+
     private(set) var summaries: [String: QuotaSummary]
+    private(set) var loading: Set<String> = []
     var overlayURL: URL
+    private var refreshTimer: Timer?
+    private var refreshGeneration: UInt64 = 0
 
     init(summaries: [String: QuotaSummary], overlayURL: URL? = nil) {
         self.summaries = summaries
@@ -38,8 +43,25 @@ final class CapacityDockStore: CapacityDockQuotaReading {
         return CapacityDockStore(summaries: [:])
     }
 
+    func start() {
+        Task { await refreshLiveProviders(userInitiated: false) }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.refreshLiveProviders(userInitiated: false)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stop() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
     func reloadOverlay() {
         applyOverlayIfPresent()
+        notifyQuotaChanged()
     }
 
     func capacityDockQuotaSummary(for provider: CapacityDockProvider) -> QuotaSummary? {
@@ -51,10 +73,25 @@ final class CapacityDockStore: CapacityDockQuotaReading {
     }
 
     func connectCapacityDockProvider(_ provider: CapacityDockProvider) async {
-        NotificationCenter.default.post(
-            name: .capacityDockOpenProviderSettings,
-            object: provider.id
-        )
+        guard Self.liveProviderIDs.contains(provider.id) else {
+            NotificationCenter.default.post(
+                name: .capacityDockOpenProviderSettings,
+                object: provider.id
+            )
+            return
+        }
+        await refresh(provider, userInitiated: true)
+    }
+
+    func refreshLiveProviders(userInitiated: Bool) async {
+        let generation = refreshGeneration
+        for id in ["grok", "claude", "codex", "cursor"] {
+            guard let provider = CapacityDockProvider(rawValue: id) else { continue }
+            await refresh(provider, userInitiated: userInitiated)
+            guard generation == refreshGeneration else { return }
+        }
+        applyOverlayIfPresent()
+        notifyQuotaChanged()
     }
 
     private func applyOverlayIfPresent() {
@@ -73,6 +110,126 @@ final class CapacityDockStore: CapacityDockQuotaReading {
                 footerLines: entry.footer
             )
         }
+    }
+
+    private func refresh(_ provider: CapacityDockProvider, userInitiated: Bool) async {
+        loading.insert(provider.id)
+        defer { loading.remove(provider.id) }
+        let previous = summaries[provider.id]
+        do {
+            switch provider.id {
+            case "grok":
+                summaries[provider.id] = try await GrokBuildSubscriptionService.refresh()
+            case "cursor":
+                summaries[provider.id] = try await CursorSubscriptionService.refresh()
+            case "codex":
+                summaries[provider.id] = try await refreshCodex(userInitiated: userInitiated)
+            case "claude":
+                summaries[provider.id] = try await refreshClaude(userInitiated: userInitiated)
+            default:
+                return
+            }
+        } catch {
+            summaries[provider.id] = mapLiveError(
+                error,
+                provider: provider,
+                previous: previous
+            )
+        }
+        if userInitiated {
+            applyOverlayIfPresent()
+            notifyQuotaChanged()
+        }
+    }
+
+    private func refreshCodex(userInitiated: Bool) async throws -> QuotaSummary {
+        if userInitiated || CodexCredentialStore.hasCredentialSource {
+            if !CodexCredentialStore.isBootstrapCompleted {
+                let usage = try await CodexSubscriptionService.bootstrap()
+                return LiveQuotaPresentation.codex(usage)
+            }
+            if let usage = try await CodexSubscriptionService.refreshIfBootstrapped() {
+                return LiveQuotaPresentation.codex(usage)
+            }
+        }
+        return summaries["codex"] ?? LiveQuotaPresentation.disconnected(.codex)
+    }
+
+    private func refreshClaude(userInitiated: Bool) async throws -> QuotaSummary {
+        let fileURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/.credentials.json")
+        let hasFile = FileManager.default.fileExists(atPath: fileURL.path)
+        if userInitiated || ClaudeCredentialStore.isBootstrapCompleted || hasFile {
+            if userInitiated || (!ClaudeCredentialStore.isBootstrapCompleted && hasFile) {
+                let usage = try await ClaudeSubscriptionService.bootstrap()
+                return LiveQuotaPresentation.claude(usage)
+            }
+            if let usage = try await ClaudeSubscriptionService.refreshIfBootstrapped() {
+                return LiveQuotaPresentation.claude(usage)
+            }
+        }
+        return summaries["claude"] ?? LiveQuotaPresentation.disconnected(.claude)
+    }
+
+    private func mapLiveError(
+        _ error: Error,
+        provider: CapacityDockProvider,
+        previous: QuotaSummary?
+    ) -> QuotaSummary {
+        if let error = error as? GrokBuildSubscriptionService.FetchError {
+            if error == .noCredentials {
+                return LiveQuotaPresentation.disconnected(.grok, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.classification == .terminalAuth,
+                previous: previous
+            )
+        }
+        if let error = error as? CursorSubscriptionService.FetchError {
+            if error == .noCredentials {
+                return LiveQuotaPresentation.disconnected(.cursor, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.classification == .terminalAuth,
+                previous: previous
+            )
+        }
+        if let error = error as? ClaudeSubscriptionService.FetchError {
+            if case .notBootstrapped = error {
+                return LiveQuotaPresentation.disconnected(.claude, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        if let error = error as? CodexSubscriptionService.FetchError {
+            if case .notBootstrapped = error {
+                return LiveQuotaPresentation.disconnected(.codex, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        return LiveQuotaPresentation.failure(
+            provider,
+            message: error.localizedDescription,
+            terminal: false,
+            previous: previous
+        )
+    }
+
+    private func notifyQuotaChanged() {
+        NotificationCenter.default.post(name: .capacityDockQuotaDidChange, object: nil)
     }
 }
 

@@ -11,6 +11,7 @@ final class CapacityDockController {
     private var railPanel: CapacityDockPanel?
     private var detailPanel: CapacityDockPanel?
     private var preferencesObserver: NSObjectProtocol?
+    private var quotaObserver: NSObjectProtocol?
     private var screenObserver: NSObjectProtocol?
     private var spaceObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
@@ -60,6 +61,18 @@ final class CapacityDockController {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.preferencesDidChange() }
+        }
+        quotaObserver = NotificationCenter.default.addObserver(
+            forName: .capacityDockQuotaDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.model.quotaEpoch &+= 1
+                self.refreshQuotaPresentation()
+                self.layoutRail()
+            }
         }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
@@ -116,6 +129,10 @@ final class CapacityDockController {
         if let preferencesObserver {
             NotificationCenter.default.removeObserver(preferencesObserver)
             self.preferencesObserver = nil
+        }
+        if let quotaObserver {
+            NotificationCenter.default.removeObserver(quotaObserver)
+            self.quotaObserver = nil
         }
         if let screenObserver {
             NotificationCenter.default.removeObserver(screenObserver)
