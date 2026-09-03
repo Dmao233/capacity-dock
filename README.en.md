@@ -27,6 +27,16 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" width="420" alt="Hover expands the notch and opens the detail card">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/rest.png" width="220" alt="Rest: one preferred ring">
+  &nbsp;
+  <img src="assets/screenshots/hover.png" width="360" alt="Hover: all rings and the detail bubble">
+</p>
+
 ## What it is
 
 Capacity Dock is a macOS 14+ menu-bar accessory (no Dock icon). It parks provider quotas in a black organic notch on the screen edge:
@@ -134,7 +144,7 @@ Demo providers include Grok, Claude, Copilot, Codex, Gemini, Kimi Code, Cursor, 
 Sources/CapacityDock/     notch, hover, detail, demo quotas, settings
 Tests/CapacityDockTests/  Swift Testing for geometry, interaction, preferences
 Scripts/package-app.sh    ad-hoc-signed .app
-assets/                   app icon
+assets/                   app icon, screenshots, demo GIF / MP4
 ```
 
 After changing the silhouette or hover:

@@ -27,6 +27,16 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" width="420" alt="悬停展开用量槽并打开详情">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/rest.png" width="220" alt="待机：一枚首选环">
+  &nbsp;
+  <img src="assets/screenshots/hover.png" width="360" alt="悬停：全部环和详情气泡">
+</p>
+
 ## 这是什么
 
 Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）。它把各家 AI 的配额收成贴在屏幕边缘的黑色有机槽：
@@ -134,7 +144,7 @@ swift run
 Sources/CapacityDock/     槽、悬停、详情、演示配额、设置
 Tests/CapacityDockTests/  Swift Testing，几何 / 交互 / 偏好
 Scripts/package-app.sh    打成 ad-hoc 签名的 .app
-assets/                   应用图标
+assets/                   应用图标、真机截图、演示 GIF / MP4
 ```
 
 改槽的形状或悬停时，请跑：
