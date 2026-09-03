@@ -1,0 +1,21 @@
+{
+  "providers": {
+    "grok": {
+      "displayName": "Grok",
+      "plan": "Heavy",
+      "footer": [],
+      "windows": [
+        { "label": "Weekly", "percent": 0.23 }
+      ]
+    },
+    "claude": {
+      "displayName": "Claude",
+      "plan": "Max 20x",
+      "footer": [],
+      "windows": [
+        { "label": "5-hour", "percent": 0.06 },
+        { "label": "Weekly", "percent": 0.17 }
+      ]
+    }
+  }
+}

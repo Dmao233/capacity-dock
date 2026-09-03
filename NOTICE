@@ -1,0 +1,18 @@
+Capacity Dock
+=============
+
+This repository packages the Capacity Dock surface as a standalone macOS
+accessory app.
+
+Substantial portions of the rail geometry, hover interaction, quota
+presentation, and provider catalog types were originally developed inside
+CodeBurn:
+
+    https://github.com/getagentseal/codeburn
+
+CodeBurn is licensed under the MIT License.
+Copyright (c) 2026 AgentSeal
+
+Standalone packaging, the demo quota host, documentation, and subsequent
+changes in this repository:
+Copyright (c) 2026 CenFangyu
