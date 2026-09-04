@@ -43,8 +43,6 @@
 
 <p align="center">
   <img src="assets/screenshots/hover-detail.png" width="360" alt="Detail: progress, plan, reset time">
-  &nbsp;
-  <img src="assets/screenshots/overview.png" width="360" alt="Overview of rings and detail cards">
 </p>
 
 ## What it is

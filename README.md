@@ -43,8 +43,6 @@
 
 <p align="center">
   <img src="assets/screenshots/hover-detail.png" width="360" alt="详情：进度、套餐、重置时间">
-  &nbsp;
-  <img src="assets/screenshots/overview.png" width="360" alt="多服务商环与详情总览">
 </p>
 
 ## 这是什么
