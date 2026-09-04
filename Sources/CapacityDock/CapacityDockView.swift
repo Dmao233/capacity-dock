@@ -111,7 +111,7 @@ final class CapacityDockViewModel {
     var attachmentProgress: CGFloat
     var detailTailEdge: CapacityDockEdge = .right
     var detailTailPosition: CGFloat = 0.5
-    var expansionAnchor: CapacityDockExpansionAnchor = .start
+    var expansionAnchor: CapacityDockExpansionAnchor = .center
     var settingsCapProgress: CGFloat = 0
     var quotaEpoch: Int = 0
 
@@ -125,8 +125,27 @@ final class CapacityDockViewModel {
     var displayedProviders: [CapacityDockProvider] {
         guard showsAllProviders else { return [preferences.preferredProvider] }
         let preferred = preferences.preferredProvider
-        let providers = [preferred] + preferences.selectedProviders.filter { $0 != preferred }
-        return expansionAnchor == .start ? providers : providers.reversed()
+        let others = preferences.selectedProviders.filter { $0 != preferred }
+        let above = others.count / 2
+        return Array(others.prefix(above)) + [preferred] + Array(others.dropFirst(above))
+    }
+
+    var preferredItemIndex: Int {
+        displayedProviders.firstIndex(of: preferences.preferredProvider) ?? 0
+    }
+
+    /// Distance from the body start (top / leading) to the preferred row.
+    /// Interpolates so the preferred ring stays on screen while extra rows
+    /// grow both ways.
+    func preferredAlongOffset(itemCount: Int? = nil, progress: CGFloat? = nil) -> CGFloat {
+        let count = itemCount ?? displayedRailItems.count
+        let others = max(preferences.selectedProviders.count - 1, 0)
+        let index = count <= 1 ? 0 : min(others / 2, count - 1)
+        let rest = railAlongPad
+        let expanded = railAlongPad + CGFloat(index) * (rowHeight + rowSpacing)
+        if preferences.keepExpanded { return expanded }
+        let t = progress ?? min(max(railPresentationProgress, 0), 1)
+        return rest + (expanded - rest) * t
     }
 
     var showsAllProviders: Bool {
@@ -173,16 +192,18 @@ final class CapacityDockViewModel {
             rowSpacing: rowSpacing,
             alongPad: railAlongPad,
             crossPad: railCrossPad,
-            crossExtent: railWidth
+            crossExtent: railWidth,
+            preferredIndex: preferredItemIndex,
+            preferredAlong: preferredAlongOffset()
         )
     }
 
     func notchBodyFrame(in bounds: CGRect) -> CGRect {
         if isVertical {
-            let y = expansionAnchor == .start ? bounds.minY : bounds.maxY - bodyLength
+            let y = expansionAnchor.packsFromStart ? bounds.minY : bounds.maxY - bodyLength
             return CGRect(x: bounds.minX, y: y, width: bounds.width, height: bodyLength)
         }
-        let x = expansionAnchor == .start ? bounds.minX : bounds.maxX - bodyLength
+        let x = expansionAnchor.packsFromStart ? bounds.minX : bounds.maxX - bodyLength
         return CGRect(x: x, y: bounds.minY, width: bodyLength, height: bounds.height)
     }
 
@@ -210,7 +231,7 @@ final class CapacityDockViewModel {
     func settingsCapSlotFrame(in bounds: CGRect) -> CGRect {
         let body = notchBodyFrame(in: bounds)
         if isVertical {
-            if expansionAnchor == .start {
+            if expansionAnchor.packsFromStart {
                 return CGRect(
                     x: bounds.minX,
                     y: body.maxY,
@@ -225,7 +246,7 @@ final class CapacityDockViewModel {
                 height: max(0, body.minY - bounds.minY)
             )
         }
-        if expansionAnchor == .start {
+        if expansionAnchor.packsFromStart {
             return CGRect(
                 x: body.maxX,
                 y: bounds.minY,
@@ -253,11 +274,11 @@ final class CapacityDockViewModel {
         guard contactR > 1 else { return false }
         let pocket: CGRect
         if isVertical {
-            pocket = expansionAnchor == .start
+            pocket = expansionAnchor.packsFromStart
                 ? CGRect(x: body.minX, y: body.maxY - contactR - 8, width: body.width, height: contactR + 8)
                 : CGRect(x: body.minX, y: body.minY, width: body.width, height: contactR + 8)
         } else {
-            pocket = expansionAnchor == .start
+            pocket = expansionAnchor.packsFromStart
                 ? CGRect(x: body.maxX - contactR - 8, y: body.minY, width: contactR + 8, height: body.height)
                 : CGRect(x: body.minX, y: body.minY, width: contactR + 8, height: body.height)
         }
@@ -466,18 +487,18 @@ struct CapacityDockView: View {
 
     private var revealAlignment: Alignment {
         if model.isVertical {
-            return model.expansionAnchor == .start ? .top : .bottom
+            return model.expansionAnchor.packsFromStart ? .top : .bottom
         }
-        return model.expansionAnchor == .start ? .leading : .trailing
+        return model.expansionAnchor.packsFromStart ? .leading : .trailing
     }
 
     private var capAlignment: Alignment {
         if model.isVertical {
-            let vertical: VerticalAlignment = model.expansionAnchor == .start ? .bottom : .top
+            let vertical: VerticalAlignment = model.expansionAnchor.packsFromStart ? .bottom : .top
             let horizontal: HorizontalAlignment = model.attachmentEdge == .left ? .leading : .trailing
             return Alignment(horizontal: horizontal, vertical: vertical)
         }
-        let horizontal: HorizontalAlignment = model.expansionAnchor == .start ? .trailing : .leading
+        let horizontal: HorizontalAlignment = model.expansionAnchor.packsFromStart ? .trailing : .leading
         let vertical: VerticalAlignment = model.attachmentEdge == .top ? .top : .bottom
         return Alignment(horizontal: horizontal, vertical: vertical)
     }
@@ -604,23 +625,36 @@ struct CapacityDockSettingsCapShape: Shape {
         let nest = min(max(contactR * 0.33, orbSize * 0.25), orbSize * 0.4)
         let shift = orbSize * 0.20
         let half = orbSize / 2
-        switch (edge, expansionAnchor) {
-        case (.right, .start):
-            return CGRect(x: bodyRect.midX - half + shift, y: bodyRect.maxY - nest - half, width: orbSize, height: orbSize)
-        case (.right, .end):
-            return CGRect(x: bodyRect.midX - half + shift, y: bodyRect.minY + nest - half, width: orbSize, height: orbSize)
-        case (.left, .start):
-            return CGRect(x: bodyRect.midX - half - shift, y: bodyRect.maxY - nest - half, width: orbSize, height: orbSize)
-        case (.left, .end):
-            return CGRect(x: bodyRect.midX - half - shift, y: bodyRect.minY + nest - half, width: orbSize, height: orbSize)
-        case (.bottom, .start):
-            return CGRect(x: bodyRect.maxX - nest - half, y: bodyRect.midY - half + shift, width: orbSize, height: orbSize)
-        case (.bottom, .end):
-            return CGRect(x: bodyRect.minX + nest - half, y: bodyRect.midY - half + shift, width: orbSize, height: orbSize)
-        case (.top, .start):
-            return CGRect(x: bodyRect.maxX - nest - half, y: bodyRect.midY - half - shift, width: orbSize, height: orbSize)
-        case (.top, .end):
-            return CGRect(x: bodyRect.minX + nest - half, y: bodyRect.midY - half - shift, width: orbSize, height: orbSize)
+        let fromStart = expansionAnchor.packsFromStart
+        switch edge {
+        case .right:
+            return CGRect(
+                x: bodyRect.midX - half + shift,
+                y: fromStart ? bodyRect.maxY - nest - half : bodyRect.minY + nest - half,
+                width: orbSize,
+                height: orbSize
+            )
+        case .left:
+            return CGRect(
+                x: bodyRect.midX - half - shift,
+                y: fromStart ? bodyRect.maxY - nest - half : bodyRect.minY + nest - half,
+                width: orbSize,
+                height: orbSize
+            )
+        case .bottom:
+            return CGRect(
+                x: fromStart ? bodyRect.maxX - nest - half : bodyRect.minX + nest - half,
+                y: bodyRect.midY - half + shift,
+                width: orbSize,
+                height: orbSize
+            )
+        case .top:
+            return CGRect(
+                x: fromStart ? bodyRect.maxX - nest - half : bodyRect.minX + nest - half,
+                y: bodyRect.midY - half - shift,
+                width: orbSize,
+                height: orbSize
+            )
         }
     }
 
@@ -629,13 +663,13 @@ struct CapacityDockSettingsCapShape: Shape {
         let half = orbSize / 2
         if edge.isVertical {
             let x = bodyRect.midX - half
-            let y = expansionAnchor == .start
+            let y = expansionAnchor.packsFromStart
                 ? bodyRect.maxY + clearance
                 : bodyRect.minY - clearance - orbSize
             return CGRect(x: x, y: y, width: orbSize, height: orbSize)
         }
         let y = bodyRect.midY - half
-        let x = expansionAnchor == .start
+        let x = expansionAnchor.packsFromStart
             ? bodyRect.maxX + clearance
             : bodyRect.minX - clearance - orbSize
         return CGRect(x: x, y: y, width: orbSize, height: orbSize)
@@ -647,13 +681,13 @@ struct CapacityDockSettingsCapShape: Shape {
         let length = max(thickness * 3, (bodyCrossExtent * 0.42).rounded())
         if edge.isVertical {
             let x = bodyRect.midX - length / 2
-            let y = expansionAnchor == .start
+            let y = expansionAnchor.packsFromStart
                 ? bodyRect.maxY + clearance
                 : bodyRect.minY - clearance - thickness
             return CGRect(x: x, y: y, width: length, height: thickness)
         }
         let y = bodyRect.midY - length / 2
-        let x = expansionAnchor == .start
+        let x = expansionAnchor.packsFromStart
             ? bodyRect.maxX + clearance
             : bodyRect.minX - clearance - thickness
         return CGRect(x: x, y: y, width: thickness, height: length)

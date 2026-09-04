@@ -358,22 +358,22 @@ struct CapacityDockPlacementTests {
             railFrame: nearTop,
             visibleFrame: visibleFrame,
             edge: .right
-        ) == .start)
+        ) == .center)
         #expect(CapacityDockPlacement.expansionAnchor(
             railFrame: nearBottom,
             visibleFrame: visibleFrame,
             edge: .right
-        ) == .end)
+        ) == .center)
         #expect(CapacityDockPlacement.expansionAnchor(
             railFrame: nearLeft,
             visibleFrame: visibleFrame,
             edge: .top
-        ) == .start)
+        ) == .center)
         #expect(CapacityDockPlacement.expansionAnchor(
             railFrame: nearRight,
             visibleFrame: visibleFrame,
             edge: .top
-        ) == .end)
+        ) == .center)
     }
 
     @Test("expanded edge frames preserve the resting end instead of recentering")

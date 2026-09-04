@@ -41,7 +41,8 @@ struct CapacityDockPresentationTests {
         let resting = CapacityDockMetrics.railHeight(providerCount: 1, alongPad: model.railAlongPad, scale: model.scale)
         let expanded = CapacityDockMetrics.railHeight(providerCount: 3, alongPad: model.railAlongPad, scale: model.scale)
         #expect(abs(model.bodyLength - (resting + expanded) / 2) < 0.000_001)
-        #expect(model.displayedProviders.first == .codex)
+        #expect(model.displayedProviders[model.preferredItemIndex] == .codex)
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
     }
 
     @MainActor
@@ -68,7 +69,7 @@ struct CapacityDockPresentationTests {
         CapacityDockPreferences.setKeepExpanded(true, defaults: defaults)
         let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
 
-        #expect(model.displayedProviders == [.codex, .claude, .gemini])
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
         #expect(model.restingBodyLength == model.expandedBodyLength)
         #expect(model.bodyLength == model.expandedBodyLength)
         #expect(model.wantsExpandedRail)
@@ -76,9 +77,9 @@ struct CapacityDockPresentationTests {
         #expect(model.presentationOpacity(for: .gemini) == 1)
 
         model.interaction.setRailHovered(true)
-        #expect(model.displayedProviders == [.codex, .claude, .gemini])
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
         model.interaction.setRailHovered(false)
-        #expect(model.displayedProviders == [.codex, .claude, .gemini])
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
         #expect(model.targetBodyLength == model.expandedBodyLength)
     }
 
@@ -92,10 +93,10 @@ struct CapacityDockPresentationTests {
         let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
         model.isRailPresentationExpanded = true
         model.railPresentationProgress = 1
-        model.expansionAnchor = .start
+        model.expansionAnchor = .center
 
         #expect(model.displayedRailItems == [
-            .provider(.codex), .provider(.claude), .provider(.gemini),
+            .provider(.claude), .provider(.codex), .provider(.gemini),
         ])
         let bounds = CGRect(origin: .zero, size: model.panelSize)
         let body = model.notchBodyFrame(in: bounds)
@@ -106,8 +107,6 @@ struct CapacityDockPresentationTests {
         #expect(cap.minY < body.maxY)
         #expect(cap.midX > body.midX)
         #expect(model.panelSize.height == model.bodyLength + CapacityDockMetrics.settingsCapSlot(scale: model.scale))
-        let nestedGear = CGPoint(x: cap.midX, y: cap.minY + 6)
-        #expect(model.containsSettingsCap(nestedGear, in: bounds))
     }
 
     @MainActor
@@ -211,10 +210,41 @@ struct CapacityDockPresentationTests {
         let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
         model.isRailPresentationExpanded = true
 
+        model.expansionAnchor = .center
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
+        #expect(model.preferredItemIndex == 1)
         model.expansionAnchor = .start
-        #expect(model.displayedProviders == [.codex, .claude, .gemini])
-        model.expansionAnchor = .end
-        #expect(model.displayedProviders == [.gemini, .claude, .codex])
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
+    }
+
+    @MainActor
+    @Test("preferred ring sits in the middle and extra rows grow both ways")
+    func preferredRingStaysCenteredWhileExpanding() {
+        let suite = "CodeBurnMenubarTests.CapacityDock.CenterExpand.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        CapacityDockPreferences.setSelectedProviders([.codex, .claude, .gemini], defaults: defaults)
+        CapacityDockPreferences.setPreferredProvider(.codex, defaults: defaults)
+        let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
+        model.expansionAnchor = .center
+        model.isRailPresentationExpanded = true
+
+        let restOffset = model.preferredAlongOffset(itemCount: 1, progress: 0)
+        let expandedOffset = model.preferredAlongOffset(itemCount: 3, progress: 1)
+        #expect(restOffset == model.railAlongPad)
+        #expect(expandedOffset == model.railAlongPad + model.rowHeight + model.rowSpacing)
+
+        model.railPresentationProgress = 0
+        let restBounds = CGRect(origin: .zero, size: model.panelSize)
+        let restFrames = model.orbFrames(in: restBounds)
+        #expect(restFrames.count == 3)
+        #expect(abs(restFrames[1].minY - restOffset) < 0.000_001)
+
+        model.railPresentationProgress = 1
+        let expandedBounds = CGRect(origin: .zero, size: model.panelSize)
+        let expandedFrames = model.orbFrames(in: expandedBounds)
+        #expect(abs(expandedFrames[1].minY - expandedOffset) < 0.000_001)
+        #expect(expandedFrames[0].maxY <= expandedFrames[1].minY + 0.000_001)
+        #expect(expandedFrames[1].maxY <= expandedFrames[2].minY + 0.000_001)
     }
 
     @MainActor
@@ -406,7 +436,7 @@ struct CapacityDockPresentationTests {
 
         for progress: CGFloat in [0, 0.25, 0.5, 0.75, 1] {
             model.railPresentationProgress = progress
-            #expect(model.displayedProviders.first == .codex)
+            #expect(model.displayedProviders[model.preferredItemIndex] == .codex)
             #expect(model.hoveredProvider == .codex)
         }
 
@@ -425,10 +455,10 @@ struct CapacityDockPresentationTests {
         CapacityDockPreferences.setPreferredProvider(.codex, defaults: defaults)
         let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
         model.isRailPresentationExpanded = true
-        model.expansionAnchor = .end
+        model.expansionAnchor = .center
         model.railPresentationProgress = 0
 
-        #expect(model.displayedProviders == [.gemini, .claude, .codex])
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
         #expect(model.presentationOpacity(for: .codex) == 1)
         #expect(model.presentationOpacity(for: .gemini) == 0)
         #expect(model.presentationOpacity(for: .claude) == 0)

@@ -1041,9 +1041,17 @@ final class CapacityDockController {
                                                     railPanel.frame.height > 0
         {
             if dockedEdge.isVertical {
-                model.expansionAnchor == .start ? railPanel.frame.maxY : railPanel.frame.minY
+                switch model.expansionAnchor {
+                case .center: railPanel.frame.maxY - model.preferredAlongOffset()
+                case .start: railPanel.frame.maxY
+                case .end: railPanel.frame.minY
+                }
             } else {
-                model.expansionAnchor == .start ? railPanel.frame.minX : railPanel.frame.maxX
+                switch model.expansionAnchor {
+                case .center: railPanel.frame.minX + model.preferredAlongOffset()
+                case .start: railPanel.frame.minX
+                case .end: railPanel.frame.maxX
+                }
             }
         } else {
             floatingAnchors?.axisCoordinate
@@ -1060,7 +1068,13 @@ final class CapacityDockController {
             anchoredTop: anchoredTop,
             anchoredLeading: anchoredLeading,
             anchoredAxisCoordinate: anchoredAxisCoordinate,
-            expansionAnchor: model.expansionAnchor
+            expansionAnchor: model.expansionAnchor,
+            anchorAlongOffset: model.preferredAlongOffset(
+                itemCount: wantsExpandedPresentation
+                    ? max(model.preferences.selectedProviders.count, 1)
+                    : 1,
+                progress: wantsExpandedPresentation ? 1 : 0
+            )
         )
         let target = CapacityDockMotion.pixelAlignedRailFrame(
             rawTarget,

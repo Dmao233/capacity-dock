@@ -3,6 +3,12 @@ import CoreGraphics
 enum CapacityDockExpansionAnchor: Equatable, Sendable {
     case start
     case end
+    /// Preferred ring stays put; extra rings grow both ways.
+    case center
+
+    /// Scoop, settings cap, and body packing sit on the start edge unless
+    /// expansion is pinned to the opposite end.
+    var packsFromStart: Bool { self != .end }
 }
 
 /// Hit geometry for the Codenotch orb stack: one rounded column per ring,
@@ -17,18 +23,26 @@ enum CapacityDockOrbStack {
         rowSpacing: CGFloat,
         alongPad: CGFloat,
         crossPad: CGFloat,
-        crossExtent: CGFloat
+        crossExtent: CGFloat,
+        preferredIndex: Int = 0,
+        preferredAlong: CGFloat? = nil
     ) -> [CGRect] {
         guard itemCount > 0 else { return [] }
         let contentLength = CGFloat(itemCount) * rowHeight
             + CGFloat(itemCount - 1) * rowSpacing
         let alongMax = isVertical ? bounds.height : bounds.width
-        let alongStart: CGFloat = expansionAnchor == .start
-            ? alongPad
-            : alongMax - alongPad - contentLength
+        let stride = rowHeight + rowSpacing
+        let alongStart: CGFloat
+        if expansionAnchor == .center, let preferredAlong {
+            alongStart = preferredAlong - CGFloat(min(max(preferredIndex, 0), itemCount - 1)) * stride
+        } else {
+            alongStart = expansionAnchor.packsFromStart
+                ? alongPad
+                : alongMax - alongPad - contentLength
+        }
         let crossSpan = max(0, crossExtent - crossPad * 2)
         return (0..<itemCount).map { index in
-            let along = alongStart + CGFloat(index) * (rowHeight + rowSpacing)
+            let along = alongStart + CGFloat(index) * stride
             if isVertical {
                 return CGRect(x: crossPad, y: along, width: crossSpan, height: rowHeight)
             }
@@ -70,7 +84,8 @@ enum CapacityDockPlacement {
         anchoredTop: CGFloat? = nil,
         anchoredLeading: CGFloat? = nil,
         anchoredAxisCoordinate: CGFloat? = nil,
-        expansionAnchor: CapacityDockExpansionAnchor = .start
+        expansionAnchor: CapacityDockExpansionAnchor = .start,
+        anchorAlongOffset: CGFloat = 0
     ) -> CGRect {
         let fittedSize = CGSize(
             width: min(size.width, max(0, screenFrame.width - floatingInset * 2)),
@@ -95,9 +110,15 @@ enum CapacityDockPlacement {
             if let anchoredLeading {
                 leading = min(max(anchoredLeading, lowestLeading), highestLeading)
             } else if let anchoredAxisCoordinate {
-                let candidate = expansionAnchor == .start
-                    ? anchoredAxisCoordinate
-                    : anchoredAxisCoordinate - fittedSize.width
+                let candidate: CGFloat
+                switch expansionAnchor {
+                case .center:
+                    candidate = anchoredAxisCoordinate - anchorAlongOffset
+                case .start:
+                    candidate = anchoredAxisCoordinate
+                case .end:
+                    candidate = anchoredAxisCoordinate - fittedSize.width
+                }
                 leading = min(max(candidate, lowestLeading), highestLeading)
             } else if let normalizedHorizontalOffset {
                 let normalized = min(max(CGFloat(normalizedHorizontalOffset), 0), 1)
@@ -122,9 +143,15 @@ enum CapacityDockPlacement {
             if let anchoredTop {
                 top = min(max(anchoredTop, lowestTop), highestTop)
             } else if let anchoredAxisCoordinate {
-                let candidate = expansionAnchor == .start
-                    ? anchoredAxisCoordinate
-                    : anchoredAxisCoordinate + fittedSize.height
+                let candidate: CGFloat
+                switch expansionAnchor {
+                case .center:
+                    candidate = anchoredAxisCoordinate + anchorAlongOffset
+                case .start:
+                    candidate = anchoredAxisCoordinate
+                case .end:
+                    candidate = anchoredAxisCoordinate + fittedSize.height
+                }
                 top = min(max(candidate, lowestTop), highestTop)
             } else if let normalizedTopOffset {
                 let normalized = min(max(CGFloat(normalizedTopOffset), 0), 1)
@@ -220,14 +247,10 @@ enum CapacityDockPlacement {
         visibleFrame: CGRect,
         edge: CapacityDockEdge
     ) -> CapacityDockExpansionAnchor {
-        if edge.isVertical {
-            let roomBelow = railFrame.minY - visibleFrame.minY
-            let roomAbove = visibleFrame.maxY - railFrame.maxY
-            return roomBelow >= roomAbove ? .start : .end
-        }
-        let roomTowardStart = railFrame.minX - visibleFrame.minX
-        let roomTowardEnd = visibleFrame.maxX - railFrame.maxX
-        return roomTowardEnd >= roomTowardStart ? .start : .end
+        // Preferred stays in the middle; extra rings grow both ways. Room on
+        // either side is handled by clamping the expanded frame, not by
+        // pinning the stack to one end.
+        .center
     }
 
     static func clampedDragFrame(
@@ -355,7 +378,7 @@ enum CapacityDockPlacement {
         let slot = Int(alongOffset / period)
         guard slot < rowCount,
               alongOffset - CGFloat(slot) * period <= rowHeight else { return nil }
-        return expansionAnchor == .start ? slot : rowCount - 1 - slot
+        return expansionAnchor.packsFromStart ? slot : rowCount - 1 - slot
     }
 
     static func preferredDetailSide(

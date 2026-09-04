@@ -171,9 +171,24 @@ enum CapacityDockMotion {
                 progress: progress
             )
         }
-        return expansionAnchor == .start
-            ? interpolateTopAnchored(from: from, to: to, progress: progress)
-            : interpolateBottomAnchored(from: from, to: to, progress: progress)
+        switch expansionAnchor {
+        case .center:
+            return interpolateCenterAnchored(from: from, to: to, progress: progress)
+        case .start:
+            return interpolateTopAnchored(from: from, to: to, progress: progress)
+        case .end:
+            return interpolateBottomAnchored(from: from, to: to, progress: progress)
+        }
+    }
+
+    static func interpolateCenterAnchored(from: CGRect, to: CGRect, progress: CGFloat) -> CGRect {
+        let t = min(max(progress, 0), 1)
+        return CGRect(
+            x: from.minX + (to.minX - from.minX) * t,
+            y: from.minY + (to.minY - from.minY) * t,
+            width: from.width + (to.width - from.width) * t,
+            height: from.height + (to.height - from.height) * t
+        )
     }
 
     static func interpolateBottomAnchored(from: CGRect, to: CGRect, progress: CGFloat) -> CGRect {
@@ -192,29 +207,47 @@ enum CapacityDockMotion {
         expansionAnchor: CapacityDockExpansionAnchor
     ) -> FloatingRailAnchors {
         if isVertical {
-            return expansionAnchor == .start
-                ? FloatingRailAnchors(
+            switch expansionAnchor {
+            case .center:
+                return FloatingRailAnchors(
+                    top: nil,
+                    leading: frame.minX,
+                    axisCoordinate: frame.midY
+                )
+            case .start:
+                return FloatingRailAnchors(
                     top: preservedTop ?? frame.maxY,
                     leading: frame.minX,
                     axisCoordinate: nil
                 )
-                : FloatingRailAnchors(
+            case .end:
+                return FloatingRailAnchors(
                     top: nil,
                     leading: frame.minX,
                     axisCoordinate: frame.minY
                 )
+            }
         }
-        return expansionAnchor == .start
-            ? FloatingRailAnchors(
+        switch expansionAnchor {
+        case .center:
+            return FloatingRailAnchors(
+                top: preservedTop ?? frame.maxY,
+                leading: nil,
+                axisCoordinate: frame.midX
+            )
+        case .start:
+            return FloatingRailAnchors(
                 top: preservedTop ?? frame.maxY,
                 leading: frame.minX,
                 axisCoordinate: nil
             )
-            : FloatingRailAnchors(
+        case .end:
+            return FloatingRailAnchors(
                 top: preservedTop ?? frame.maxY,
                 leading: nil,
                 axisCoordinate: frame.maxX
             )
+        }
     }
 
     static func pixelAlignedRailFrame(
@@ -228,6 +261,28 @@ enum CapacityDockMotion {
         func aligned(_ value: CGFloat) -> CGFloat {
             (value * scale).rounded() / scale
         }
+        func alignedBottom(
+            _ frame: CGRect,
+            height: CGFloat,
+            expansionAnchor: CapacityDockExpansionAnchor
+        ) -> CGFloat {
+            switch expansionAnchor {
+            case .center: aligned(frame.minY)
+            case .start: aligned(frame.maxY) - height
+            case .end: aligned(frame.minY)
+            }
+        }
+        func alignedAlongStart(
+            _ frame: CGRect,
+            width: CGFloat,
+            expansionAnchor: CapacityDockExpansionAnchor
+        ) -> CGFloat {
+            switch expansionAnchor {
+            case .center: aligned(frame.minX)
+            case .start: aligned(frame.minX)
+            case .end: aligned(frame.maxX) - width
+            }
+        }
 
         let width = aligned(frame.width)
         let height = aligned(frame.height)
@@ -236,34 +291,22 @@ enum CapacityDockMotion {
         switch dockedEdge {
         case .right:
             leading = aligned(frame.maxX) - width
-            bottom = expansionAnchor == .start
-                ? aligned(frame.maxY) - height
-                : aligned(frame.minY)
+            bottom = alignedBottom(frame, height: height, expansionAnchor: expansionAnchor)
         case .top:
-            leading = expansionAnchor == .start
-                ? aligned(frame.minX)
-                : aligned(frame.maxX) - width
+            leading = alignedAlongStart(frame, width: width, expansionAnchor: expansionAnchor)
             bottom = aligned(frame.maxY) - height
         case .bottom:
-            leading = expansionAnchor == .start
-                ? aligned(frame.minX)
-                : aligned(frame.maxX) - width
+            leading = alignedAlongStart(frame, width: width, expansionAnchor: expansionAnchor)
             bottom = aligned(frame.minY)
         case .left:
             leading = aligned(frame.minX)
-            bottom = expansionAnchor == .start
-                ? aligned(frame.maxY) - height
-                : aligned(frame.minY)
+            bottom = alignedBottom(frame, height: height, expansionAnchor: expansionAnchor)
         case nil:
             if isVertical {
                 leading = aligned(frame.minX)
-                bottom = expansionAnchor == .start
-                    ? aligned(frame.maxY) - height
-                    : aligned(frame.minY)
+                bottom = alignedBottom(frame, height: height, expansionAnchor: expansionAnchor)
             } else {
-                leading = expansionAnchor == .start
-                    ? aligned(frame.minX)
-                    : aligned(frame.maxX) - width
+                leading = alignedAlongStart(frame, width: width, expansionAnchor: expansionAnchor)
                 bottom = aligned(frame.minY)
             }
         }
@@ -351,15 +394,15 @@ enum CapacityDockMotion {
                 ? (from.maxY + (to.maxY - from.maxY) * t) - height
                 : from.minY + (to.minY - from.minY) * t
         case .top:
-            x = expansionAnchor == .start
-                ? from.minX + (to.minX - from.minX) * t
-                : (from.maxX + (to.maxX - from.maxX) * t) - width
+            x = expansionAnchor == .end
+                ? (from.maxX + (to.maxX - from.maxX) * t) - width
+                : from.minX + (to.minX - from.minX) * t
             let top = from.maxY + (to.maxY - from.maxY) * t
             y = top - height
         case .bottom:
-            x = expansionAnchor == .start
-                ? from.minX + (to.minX - from.minX) * t
-                : (from.maxX + (to.maxX - from.maxX) * t) - width
+            x = expansionAnchor == .end
+                ? (from.maxX + (to.maxX - from.maxX) * t) - width
+                : from.minX + (to.minX - from.minX) * t
             y = from.minY + (to.minY - from.minY) * t
         }
         return CGRect(x: x, y: y, width: width, height: height)
