@@ -32,9 +32,9 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/rest.png" width="280" alt="Rest: one preferred ring on the right edge">
-  &nbsp;
   <img src="assets/screenshots/rest-close.png" width="280" alt="Rest close-up: ring and percent">
+  &nbsp;
+  <img src="assets/screenshots/rest.png" width="280" alt="Rest: one preferred ring on the right edge">
 </p>
 
 <p align="center">

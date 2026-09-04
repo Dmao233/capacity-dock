@@ -32,9 +32,9 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/rest.png" width="280" alt="待机：贴在右缘的一枚首选环">
-  &nbsp;
   <img src="assets/screenshots/rest-close.png" width="280" alt="待机特写：配额环和百分比">
+  &nbsp;
+  <img src="assets/screenshots/rest.png" width="280" alt="待机：贴在右缘的一枚首选环">
 </p>
 
 <p align="center">
