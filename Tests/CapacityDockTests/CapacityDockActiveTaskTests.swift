@@ -45,6 +45,74 @@ struct CapacityDockActiveTaskTests {
         ])
     }
 
+    @Test("Cursor conversation name wins over the last hashed file")
+    func cursorConversationTitleWinsOverFile() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(
+            at: Self.cursorDB(home),
+            rows: [
+                (
+                    conversation: "884772cc-96ba-4147-81e2-ba80aa261d71",
+                    file: "/Users/lu/Documents/Grok/capacity-dock/CONTRIBUTING.md",
+                    timestamp: Int64(now.timeIntervalSince1970 * 1000) - 1_000
+                )
+            ]
+        )
+        try Self.writeConversationSearch(
+            at: Self.cursorSearchDB(home),
+            rows: [
+                (id: "884772cc-96ba-4147-81e2-ba80aa261d71", title: "Capacity Dock integration setup")
+            ]
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(
+                id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+                title: "Capacity Dock integration setup"
+            )
+        ])
+    }
+
+    @Test("Cursor tracking summary title wins over conversation search")
+    func cursorSummaryTitleWinsOverSearch() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(
+            at: Self.cursorDB(home),
+            rows: [
+                (
+                    conversation: "conv-2",
+                    file: "/tmp/CONTRIBUTING.md",
+                    timestamp: Int64(now.timeIntervalSince1970 * 1000)
+                )
+            ],
+            summaries: [
+                (id: "conv-2", title: "From tracking summary")
+            ]
+        )
+        try Self.writeConversationSearch(
+            at: Self.cursorSearchDB(home),
+            rows: [(id: "conv-2", title: "From conversation search")]
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(id: "conv-2", title: "From tracking summary")
+        ])
+    }
+
     @Test("stale Cursor edits drop off after the live window")
     func staleCursorEditIsHidden() throws {
         let home = try Self.makeHome()
@@ -244,9 +312,52 @@ struct CapacityDockActiveTaskTests {
         return dir.appendingPathComponent("ai-code-tracking.db")
     }
 
+    private static func cursorSearchDB(_ home: URL) throws -> URL {
+        let dir = home.appendingPathComponent(
+            "Library/Application Support/Cursor/User/globalStorage",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("conversation-search.db")
+    }
+
+    private static func writeConversationSearch(
+        at url: URL,
+        rows: [(id: String, title: String)]
+    ) throws {
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK else {
+            sqlite3_close(database)
+            throw TrackingFixtureError.open
+        }
+        defer { sqlite3_close(database) }
+        guard sqlite3_exec(
+            database,
+            "CREATE TABLE conversations (id TEXT, title TEXT);",
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else { throw TrackingFixtureError.create }
+        for row in rows {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                database,
+                "INSERT INTO conversations(id, title) VALUES (?, ?);",
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK else { throw TrackingFixtureError.prepare }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, row.id, -1, sqliteTransientForActiveTaskTests)
+            sqlite3_bind_text(statement, 2, row.title, -1, sqliteTransientForActiveTaskTests)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
+        }
+    }
+
     private static func writeTrackingDatabase(
         at url: URL,
-        rows: [(conversation: String, file: String, timestamp: Int64)]
+        rows: [(conversation: String, file: String, timestamp: Int64)],
+        summaries: [(id: String, title: String)] = []
     ) throws {
         var database: OpaquePointer?
         guard sqlite3_open(url.path, &database) == SQLITE_OK else {
@@ -287,6 +398,34 @@ struct CapacityDockActiveTaskTests {
             sqlite3_bind_text(statement, 1, row.conversation, -1, sqliteTransientForActiveTaskTests)
             sqlite3_bind_text(statement, 2, row.file, -1, sqliteTransientForActiveTaskTests)
             sqlite3_bind_int64(statement, 3, row.timestamp)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
+        }
+
+        guard sqlite3_exec(
+            database,
+            """
+            CREATE TABLE conversation_summaries (
+                conversationId TEXT PRIMARY KEY,
+                title TEXT,
+                updatedAt INTEGER NOT NULL
+            );
+            """,
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else { throw TrackingFixtureError.create }
+        for summary in summaries {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                database,
+                "INSERT INTO conversation_summaries(conversationId, title, updatedAt) VALUES (?, ?, 1);",
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK else { throw TrackingFixtureError.prepare }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, summary.id, -1, sqliteTransientForActiveTaskTests)
+            sqlite3_bind_text(statement, 2, summary.title, -1, sqliteTransientForActiveTaskTests)
             guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
         }
     }

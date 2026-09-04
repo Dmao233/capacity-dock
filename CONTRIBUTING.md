@@ -15,7 +15,7 @@ swift run
 打包 `.app`：
 
 ```bash
-Scripts/package-app.sh 0.4.0
+Scripts/package-app.sh 0.4.1
 open .build/dist/CapacityDock.app
 ```
 

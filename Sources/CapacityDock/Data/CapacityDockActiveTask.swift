@@ -90,16 +90,22 @@ enum CapacityDockLiveActivity {
 
 /// Read-only view of Cursor's local AI-code tracking database. Rows appear
 /// while Composer is writing files; they are not a process list and are never
-/// copied into Capacity Dock storage.
+/// copied into Capacity Dock storage. Titles prefer Cursor's conversation
+/// name, then the last hashed file.
 struct CursorLiveEditStore: Sendable {
     let databaseURL: URL
+    let conversationSearchURL: URL
 
-    init(databaseURL: URL) {
+    init(databaseURL: URL, conversationSearchURL: URL) {
         self.databaseURL = databaseURL
+        self.conversationSearchURL = conversationSearchURL
     }
 
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
-        self.init(databaseURL: Self.defaultDatabaseURL(home: home))
+        self.init(
+            databaseURL: Self.defaultDatabaseURL(home: home),
+            conversationSearchURL: Self.defaultConversationSearchURL(home: home)
+        )
     }
 
     static func defaultDatabaseURL(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
@@ -107,6 +113,14 @@ struct CursorLiveEditStore: Sendable {
             .appendingPathComponent(".cursor", isDirectory: true)
             .appendingPathComponent("ai-tracking", isDirectory: true)
             .appendingPathComponent("ai-code-tracking.db", isDirectory: false)
+    }
+
+    static func defaultConversationSearchURL(
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> URL {
+        home
+            .appendingPathComponent("Library/Application Support/Cursor/User/globalStorage", isDirectory: true)
+            .appendingPathComponent("conversation-search.db", isDirectory: false)
     }
 
     func tasks(since cutoff: Date) throws -> [CapacityDockActiveTask] {
@@ -135,25 +149,84 @@ struct CursorLiveEditStore: Sendable {
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, cutoffMs)
 
-        var tasks: [CapacityDockActiveTask] = []
+        var rows: [(id: String, fileName: String?)] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let conversation = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
                   !conversation.isEmpty else { continue }
-            let fileName = sqlite3_column_text(statement, 1).map { String(cString: $0) }
-            tasks.append(
-                CapacityDockActiveTask(
-                    id: conversation,
-                    title: Self.displayTitle(path: fileName)
-                )
+            rows.append((
+                id: conversation,
+                fileName: sqlite3_column_text(statement, 1).map { String(cString: $0) }
+            ))
+        }
+
+        let summaryTitles = Self.titles(
+            for: rows.map(\.id),
+            database: database,
+            sql: "SELECT title FROM conversation_summaries WHERE conversationId = ? LIMIT 1;"
+        )
+        let missing = rows.map(\.id).filter { summaryTitles[$0] == nil }
+        let searchTitles = Self.titles(for: missing, databaseURL: conversationSearchURL)
+
+        return rows.map { row in
+            CapacityDockActiveTask(
+                id: row.id,
+                title: summaryTitles[row.id]
+                    ?? searchTitles[row.id]
+                    ?? Self.displayTitle(path: row.fileName)
             )
         }
-        return tasks
     }
 
     static func displayTitle(path: String?) -> String {
         LiveActivityPath.fileTitle(path)
     }
+
+    private static func titles(
+        for ids: [String],
+        databaseURL: URL
+    ) -> [String: String] {
+        guard !ids.isEmpty, FileManager.default.fileExists(atPath: databaseURL.path) else { return [:] }
+        var database: OpaquePointer?
+        let openResult = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard openResult == SQLITE_OK else {
+            sqlite3_close(database)
+            return [:]
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 250)
+        return titles(
+            for: ids,
+            database: database,
+            sql: "SELECT title FROM conversations WHERE id = ? LIMIT 1;"
+        )
+    }
+
+    private static func titles(
+        for ids: [String],
+        database: OpaquePointer?,
+        sql: String
+    ) -> [String: String] {
+        guard let database, !ids.isEmpty else { return [:] }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [:] }
+        defer { sqlite3_finalize(statement) }
+
+        var found: [String: String] = [:]
+        for id in ids {
+            sqlite3_reset(statement)
+            sqlite3_clear_bindings(statement)
+            sqlite3_bind_text(statement, 1, id, -1, sqliteTransientForLiveActivity)
+            guard sqlite3_step(statement) == SQLITE_ROW,
+                  let title = LiveActivityPath.nonEmpty(
+                    sqlite3_column_text(statement, 0).map { String(cString: $0) }
+                  ) else { continue }
+            found[id] = title
+        }
+        return found
+    }
 }
+
+private let sqliteTransientForLiveActivity = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 struct GrokLiveSessionStore {
     let sessionsURL: URL
