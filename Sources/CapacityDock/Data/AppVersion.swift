@@ -3,7 +3,7 @@ import Foundation
 enum AppVersion {
     /// Bump this with every GitHub release. Packaged builds also read
     /// CFBundleShortVersionString from Info.plist.
-    static let marketing = "0.4.1"
+    static let marketing = "0.1.0"
 
     static var current: String {
         if let fromBundle = Bundle.main.object(
