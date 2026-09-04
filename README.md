@@ -38,11 +38,9 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/hover.png" width="520" alt="悬停：详情气泡和已选环">
-</p>
-
-<p align="center">
-  <img src="assets/screenshots/hover-detail.png" width="360" alt="详情：进度、套餐、重置时间">
+  <img src="assets/screenshots/hover.png" width="280" alt="悬停：详情气泡和已选环">
+  &nbsp;
+  <img src="assets/screenshots/hover-detail.png" width="280" alt="详情：进度、套餐、重置时间">
 </p>
 
 ## 这是什么

@@ -38,11 +38,9 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/hover.png" width="520" alt="Hover: detail card and selected rings">
-</p>
-
-<p align="center">
-  <img src="assets/screenshots/hover-detail.png" width="360" alt="Detail: progress, plan, reset time">
+  <img src="assets/screenshots/hover.png" width="280" alt="Hover: detail card and selected rings">
+  &nbsp;
+  <img src="assets/screenshots/hover-detail.png" width="280" alt="Detail: progress, plan, reset time">
 </p>
 
 ## What it is
