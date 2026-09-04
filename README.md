@@ -39,30 +39,22 @@
 
 ## 这是什么
 
-Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）。它把各家 AI 的配额收成贴在屏幕边缘的黑色有机槽：
+Capacity Dock 是 macOS 14+ 的菜单栏附属应用，没有 Dock 图标。它把各家 AI 的真实配额贴在屏幕边缘：没登录就是 `-`，不编造用量。
 
-- **待机**只显示当前首选服务商的一枚环
-- **悬停**沿下方弧度展开已选服务商，并打开向内的详情气泡
-- **进行中**任务出现在详情气泡 `Source:` 下面：绿圈 + 标题，最多 3 条；90 秒内没有活写入就整段隐藏
-- **常驻展开**让待机就显示全部环，详情仍随鼠标关掉
-- 停靠在左 / 右 / 上 / 下，或拖成独立胶囊
-- 设置齿轮活在槽外：贴着底部勺形弧的短弧，悬停胀成齿轮
-- 设置窗是系统设置那种左侧边栏：通用 / 关于 / 服务商列表
-
-本仓库把这套表面做成可独立编译、可安装的小工具。几何、悬停和详情卡片源码来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。开箱环上是 `-`，不是假用量；没登录保持 Not connected。可选 `quota.json` 仍可覆盖。
+几何、悬停和详情卡片来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。本仓库做成可安装的独立小工具。
 
 ## 功能
 
 | | |
 | --- | --- |
-| 有机黑槽 | 顶部勺形锁定，高度变化时上沿不动 |
-| 配额环 | 周额度优先；未绑定显示单个 `-` |
-| 详情气泡 | 进度、重置倒计时、套餐、Connect / Reconnect、进行中任务 |
-| 本机适配器 | Codex、Claude、ClinePass、Cursor、Gemini、Antigravity、Copilot、Z.ai、Kimi Code、Grok |
-| SuperGrok Heavy | 计划名收成 `Heavy` |
-| 右键菜单 | 常驻展开、停靠边缘、隐藏 |
-| 跨桌面 | 跟随所有 Space，不钉死在第一次出现的桌面 |
-| 中英界面 | 系统语言为简体中文时走 `zh-Hans` |
+| 边缘用量槽 | 贴在屏幕左 / 右 / 上 / 下，或拖到桌面变成胶囊 |
+| 配额环 | 待机只留首选环；悬停展开已选服务商和详情 |
+| 详情 | 进度、重置时间、套餐、连接；进行中任务显示会话标题 |
+| 本机读取 | Codex、Claude、Cursor、Gemini、Antigravity、Copilot、Kimi Code、Grok 读本机登录；ClinePass、Z.ai 也可在设置里填密钥 |
+| 设置 | 左侧边栏：通用 / 关于 / 服务商，可检查更新 |
+| 菜单栏入口 | 隐藏后从 `◉` 再打开，不占 Dock |
+| 跟桌面走 | 所有 Space 都在，不会钉在第一次出现的那一屏 |
+| 中英 | 系统语言是简体中文时用中文 |
 
 ## 安装
 
@@ -163,7 +155,7 @@ swift run
 ## 开发
 
 ```
-Sources/CapacityDock/     槽、悬停、详情、演示配额、设置
+Sources/CapacityDock/     槽、悬停、详情、本机配额、设置
 Tests/CapacityDockTests/  Swift Testing，几何 / 交互 / 偏好
 Scripts/package-app.sh    打成 ad-hoc 签名的 .app
 assets/                   应用图标、真机截图、演示 GIF / MP4

@@ -39,30 +39,22 @@
 
 ## What it is
 
-Capacity Dock is a macOS 14+ menu-bar accessory (no Dock icon). It parks provider quotas in a black organic notch on the screen edge:
+Capacity Dock is a macOS 14+ menu-bar accessory with no Dock icon. It parks real AI quotas on the screen edge: unbound rings show `-`, and the app does not invent usage.
 
-- **Rest** shows only the preferred provider ring
-- **Hover** expands the selected set along the bottom scoop and opens an inward detail bubble
-- **Active tasks** appear under `Source:` on the detail card: a green live dot plus a title, at most three rows; the block hides after 90 seconds with no live writes
-- **Keep Expanded** leaves every selected ring visible at rest; the detail card still follows the pointer
-- Dock to left / right / top / bottom, or drag it into a floating pill
-- Settings live outside the blob: a short arc that follows the scoop, inflating into a gear on hover
-- Settings use a system-settings sidebar: General / About / provider list
-
-This repository packages that surface as a small, buildable app. Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). Rings show `-` until a local login or `quota.json` supplies real numbers — no invented usage.
+Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). This repository packages that surface as a small, installable app.
 
 ## Features
 
 | | |
 | --- | --- |
-| Organic notch | Top scoop stays locked while height changes |
-| Quota rings | Weekly window first; unbound usage is a single `-` |
-| Detail bubble | Progress, reset countdown, plan, Connect / Reconnect, active tasks |
-| Live adapters | Codex, Claude, ClinePass, Cursor, Gemini, Antigravity, Copilot, Z.ai, Kimi Code, Grok |
-| SuperGrok Heavy | Plan label compact to `Heavy` |
-| Right-click menu | Keep Expanded, Dock to Edge, Hide |
-| Spaces | Joins every desktop; not pinned to the Space where it first appeared |
-| Chinese + English | `zh-Hans` when the system language is Simplified Chinese |
+| Edge notch | Dock to left / right / top / bottom, or drag it into a floating pill |
+| Quota rings | Rest shows the preferred ring; hover expands the selected set and the detail card |
+| Detail | Progress, reset time, plan, connect; live rows use the conversation title |
+| Local logins | Reads Codex, Claude, Cursor, Gemini, Antigravity, Copilot, Kimi Code, and Grok from this Mac; ClinePass and Z.ai can also take a key in Settings |
+| Settings | Sidebar for General / About / providers, plus a GitHub update check |
+| Menu-bar extra | Hide the rail and restore it from `◉`; it never takes a Dock slot |
+| Spaces | Follows every desktop; not pinned to the Space where it first appeared |
+| Chinese + English | Simplified Chinese when that is the system language |
 
 ## Install
 
@@ -163,7 +155,7 @@ See [`docs/quota.example.json`](docs/quota.example.json):
 ## Develop
 
 ```
-Sources/CapacityDock/     notch, hover, detail, demo quotas, settings
+Sources/CapacityDock/     notch, hover, detail, live quotas, settings
 Tests/CapacityDockTests/  Swift Testing for geometry, interaction, preferences
 Scripts/package-app.sh    ad-hoc-signed .app
 assets/                   app icon, screenshots, demo GIF / MP4
