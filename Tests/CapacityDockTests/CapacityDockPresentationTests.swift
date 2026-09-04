@@ -9,7 +9,6 @@ struct CapacityDockPresentationTests {
     func compactRailMetrics() {
         #expect(CapacityDockMetrics.railWidth(scale: 1) == 72)
         #expect(CapacityDockMetrics.horizontalRailWidth(scale: 1) == 78)
-        #expect(CapacityDockMetrics.edgeFlareWidth(scale: 1) == 0)
         #expect(CapacityDockMetrics.edgeShoulderDepth(scale: 1) == 72)
         #expect(CapacityDockMetrics.rowHeight(scale: 1) == 62)
         #expect(CapacityDockMetrics.rowSpacing(scale: 1) == 10)
@@ -202,22 +201,6 @@ struct CapacityDockPresentationTests {
     }
 
     @MainActor
-    @Test("Resting provider stays at the reveal anchor")
-    func restingProviderFollowsExpansionAnchor() {
-        let suite = "CodeBurnMenubarTests.CapacityDock.AnchorOrder.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        CapacityDockPreferences.setSelectedProviders([.codex, .claude, .gemini], defaults: defaults)
-        let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
-        model.isRailPresentationExpanded = true
-
-        model.expansionAnchor = .center
-        #expect(model.displayedProviders == [.claude, .codex, .gemini])
-        #expect(model.preferredItemIndex == 1)
-        model.expansionAnchor = .start
-        #expect(model.displayedProviders == [.claude, .codex, .gemini])
-    }
-
-    @MainActor
     @Test("preferred ring sits in the middle and extra rows grow both ways")
     func preferredRingStaysCenteredWhileExpanding() {
         let suite = "CodeBurnMenubarTests.CapacityDock.CenterExpand.\(UUID().uuidString)"
@@ -245,6 +228,89 @@ struct CapacityDockPresentationTests {
         #expect(abs(expandedFrames[1].minY - expandedOffset) < 0.000_001)
         #expect(expandedFrames[0].maxY <= expandedFrames[1].minY + 0.000_001)
         #expect(expandedFrames[1].maxY <= expandedFrames[2].minY + 0.000_001)
+    }
+
+    @MainActor
+    @Test("hover emphasis waits until expand finishes, then peeks the hovered ring")
+    func hoverEmphasisWaitsForExpandThenPeeksHoveredRing() {
+        let suite = "CapacityDockTests.CapacityDock.HoverPeek.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        CapacityDockPreferences.setSelectedProviders([.codex, .claude, .gemini], defaults: defaults)
+        CapacityDockPreferences.setPreferredProvider(.codex, defaults: defaults)
+        let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
+        model.expansionAnchor = .center
+        model.dockedEdge = .right
+        model.interaction.setRailHovered(true)
+        model.isRailPresentationExpanded = true
+        model.railPresentationProgress = 0.4
+        model.isRailMotionActive = true
+        model.hoveredProvider = .gemini
+
+        #expect(!model.allowsItemEmphasis)
+        #expect(model.itemEmphasisPeekLength() == 0)
+        #expect(model.presentationScale(for: .provider(.gemini)) == 1)
+        #expect(model.panelSize.width == model.railWidth)
+
+        model.railPresentationProgress = 1
+        model.isRailMotionActive = false
+        model.extraIconRevealSettled = true
+        let peek = model.itemEmphasisPeekLength()
+        #expect(peek == CapacityDockMetrics.hoverEmphasisTravel(scale: 1))
+        #expect(model.emphasizedProvider == .gemini)
+        let bounds = CGRect(origin: .zero, size: model.panelSize)
+        let body = model.notchBodyFrame(in: bounds)
+        let frames = model.orbFrames(in: bounds)
+        #expect(body.minX == 0)
+        #expect(model.displayedProviders[2] == .gemini)
+        #expect(abs(frames[2].minX - model.railCrossPad) < 0.000_001)
+        #expect(abs(frames[1].minX - model.railCrossPad) < 0.000_001)
+        #expect(model.itemEmphasisOffset.width == -peek)
+        #expect(model.presentationScale(for: .provider(.gemini)) == 1 + CapacityDockMotion.hoverEmphasisScaleLift)
+        #expect(model.presentationScale(for: .provider(.codex)) == 1)
+    }
+
+    @MainActor
+    @Test("floating hover scale applies only to the ring under the pointer")
+    func floatingHoverScalesOnlyHoveredRing() {
+        let suite = "CapacityDockTests.CapacityDock.HoverScale.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        CapacityDockPreferences.setSelectedProviders([.codex, .claude, .gemini], defaults: defaults)
+        CapacityDockPreferences.setPreferredProvider(.codex, defaults: defaults)
+        let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
+        model.expansionAnchor = .center
+        model.dockedEdge = nil
+        model.interaction.setRailHovered(true)
+        model.isRailPresentationExpanded = true
+        model.railPresentationProgress = 1
+        model.isRailMotionActive = false
+        model.extraIconRevealSettled = true
+        model.hoveredProvider = .claude
+
+        #expect(model.itemEmphasisPeekLength() == 0)
+        #expect(model.panelSize.width == model.railWidth)
+        #expect(model.presentationScale(for: .provider(.claude)) == 1 + CapacityDockMotion.hoverEmphasisScaleLift)
+        #expect(model.presentationScale(for: .provider(.codex)) == 1)
+        #expect(model.presentationScale(for: .provider(.gemini)) == 1)
+    }
+
+    @MainActor
+    @Test("clicking another ring moves that provider into the center slot")
+    func switchingPreferredMovesProviderToCenter() {
+        let suite = "CapacityDockTests.CapacityDock.PreferredReorder.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        CapacityDockPreferences.setSelectedProviders([.codex, .claude, .gemini], defaults: defaults)
+        CapacityDockPreferences.setPreferredProvider(.codex, defaults: defaults)
+        let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
+        model.expansionAnchor = .center
+        model.isRailPresentationExpanded = true
+        model.railPresentationProgress = 1
+        #expect(model.displayedProviders == [.claude, .codex, .gemini])
+
+        CapacityDockPreferences.setPreferredProvider(.gemini, defaults: defaults)
+        model.preferences = CapacityDockPreferences.load(defaults: defaults)
+        #expect(model.displayedProviders[1] == .gemini)
+        #expect(model.preferredItemIndex == 1)
+        #expect(model.displayedProviders == [.codex, .gemini, .claude])
     }
 
     @MainActor
@@ -462,6 +528,59 @@ struct CapacityDockPresentationTests {
         #expect(model.presentationOpacity(for: .codex) == 1)
         #expect(model.presentationOpacity(for: .gemini) == 0)
         #expect(model.presentationOpacity(for: .claude) == 0)
+
+        model.railPresentationProgress = 0.5
+        #expect(model.presentationOpacity(for: .codex) == 1)
+        #expect(model.presentationOpacity(for: .gemini) == 0)
+        #expect(model.presentationOpacity(for: .claude) == 0)
+        #expect(!model.extraSlotReady(.provider(.gemini)))
+        #expect(!model.extraSlotReady(.provider(.claude)))
+        let stride = model.rowHeight + model.rowSpacing
+        #expect(model.extraAppearOffset(for: .provider(.claude)).height == stride)
+        #expect(model.extraAppearOffset(for: .provider(.gemini)).height == -stride)
+
+        model.railPresentationProgress = CapacityDockMotion.extraIconSlotThreshold
+        #expect(model.presentationOpacity(for: .codex) == 1)
+        #expect(model.extraSlotReady(.provider(.gemini)))
+        #expect(model.extraSlotReady(.provider(.claude)))
+        #expect(model.presentationOpacity(for: .gemini) == 1)
+        #expect(model.presentationOpacity(for: .claude) == 1)
+        #expect(model.extraAppearScale(for: .provider(.gemini)) == 1)
+
+        model.railPresentationProgress = 1
+        #expect(model.presentationOpacity(for: .codex) == 1)
+        #expect(model.presentationOpacity(for: .gemini) == 1)
+        #expect(model.presentationOpacity(for: .claude) == 1)
+    }
+
+    @MainActor
+    @Test("collapse fades extra rings in place instead of flying them into the scoop")
+    func collapseFadesExtraRingsInPlace() {
+        let suite = "CapacityDockTests.CapacityDock.CollapseInPlace.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        CapacityDockPreferences.setSelectedProviders([.codex, .claude, .gemini], defaults: defaults)
+        CapacityDockPreferences.setPreferredProvider(.codex, defaults: defaults)
+        let model = CapacityDockViewModel(preferences: CapacityDockPreferences.load(defaults: defaults))
+        model.expansionAnchor = .center
+        model.isRailPresentationExpanded = true
+        model.railPresentationProgress = 1
+        model.hidesExtraIcons = true
+
+        #expect(model.extraAppearOffset(for: .provider(.claude)) == .zero)
+        #expect(model.extraAppearOffset(for: .provider(.gemini)) == .zero)
+        #expect(model.extraAppearOffset(for: .provider(.codex)) == .zero)
+        #expect(!model.extraRevealVisible(for: .provider(.claude)))
+        #expect(!model.extraRevealVisible(for: .provider(.gemini)))
+        #expect(model.extraRevealVisible(for: .provider(.codex)))
+        #expect(model.presentationOpacity(for: .claude) == 0)
+        #expect(model.presentationOpacity(for: .codex) == 1)
+
+        let bounds = CGRect(origin: .zero, size: model.panelSize)
+        let frames = model.orbFrames(in: bounds)
+        #expect(frames.count == 3)
+        #expect(model.pointerTarget(at: CGPoint(x: frames[0].midX, y: frames[0].midY), in: bounds, slop: 1) == nil)
+        #expect(model.pointerTarget(at: CGPoint(x: frames[1].midX, y: frames[1].midY), in: bounds, slop: 1) == .provider(.codex))
+        #expect(model.pointerTarget(at: CGPoint(x: frames[2].midX, y: frames[2].midY), in: bounds, slop: 1) == nil)
     }
 
     @Test("Squircle gauge keeps the channel inset while using continuous corners")

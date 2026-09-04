@@ -129,11 +129,40 @@ extension QuotaSummary.Window {
     }
 
     /// Absolute reset time like "Resets Wed 10:27 PM", matching the Codenotch card.
+    /// Chinese copy uses 凌晨 for 00:00..<05:00 instead of DateFormatter's 上午.
     var resetsAtLabel: String {
+        resetsAtLabel()
+    }
+
+    func resetsAtLabel(locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        Self.formatResetsAt(resetsAt, locale: locale, timeZone: timeZone)
+    }
+
+    static func formatResetsAt(
+        _ resetsAt: Date?,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
         guard let resetsAt else { return "" }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        calendar.timeZone = timeZone
+        let hour = calendar.component(.hour, from: resetsAt)
+
         let formatter = DateFormatter()
-        formatter.locale = .current
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
         formatter.dateFormat = "EEE h:mm a"
+        if Self.usesChineseDayPeriods(locale) {
+            formatter.amSymbol = hour < 5 ? "凌晨" : "上午"
+            formatter.pmSymbol = "下午"
+        }
         return "Resets \(formatter.string(from: resetsAt))"
+    }
+
+    static func usesChineseDayPeriods(_ locale: Locale) -> Bool {
+        let id = locale.identifier.replacingOccurrences(of: "_", with: "-").lowercased()
+        return id == "zh" || id.hasPrefix("zh-")
     }
 }

@@ -13,6 +13,7 @@ struct CapacityDockMotionTests {
         #expect(CapacityDockMotion.duration(for: .detailPresent) == 0.20)
         #expect(CapacityDockMotion.duration(for: .detailFollow) == 0.16)
         #expect(CapacityDockMotion.duration(for: .detailDismiss) == 0.14)
+        #expect(CapacityDockMotion.duration(for: .preferredReorder) == 0.35)
         #expect(CapacityDockMotion.duration(for: .immediate) == 0)
 
         for transaction in [
@@ -23,6 +24,7 @@ struct CapacityDockMotionTests {
             .detailPresent,
             .detailFollow,
             .detailDismiss,
+            .preferredReorder,
             .immediate,
         ] {
             #expect(CapacityDockMotion.duration(for: transaction, reduceMotion: true) == 0)
@@ -119,6 +121,7 @@ struct CapacityDockMotionTests {
             .detailPresent,
             .detailFollow,
             .detailDismiss,
+            .preferredReorder,
         ] {
             let points = CapacityDockMotion.timingControlPoints(for: transaction)
             for value in [points.0, points.1, points.2, points.3] {
@@ -126,56 +129,6 @@ struct CapacityDockMotionTests {
                 #expect(value <= 1)
             }
         }
-    }
-
-    @Test("expanding geometry keeps the top edge while motion policy chooses a downward grow")
-    func expansionStaysTopAnchored() {
-        let visibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let resting = CapacityDockPlacement.railFrame(
-            screenFrame: visibleFrame,
-            visibleFrame: visibleFrame,
-            size: CGSize(width: 76, height: 100),
-            dockedEdge: .right,
-            normalizedHorizontalOffset: nil,
-            normalizedTopOffset: 0.42
-        )
-        let expanded = CapacityDockPlacement.railFrame(
-            screenFrame: visibleFrame,
-            visibleFrame: visibleFrame,
-            size: CGSize(width: 76, height: 360),
-            dockedEdge: .right,
-            normalizedHorizontalOffset: nil,
-            normalizedTopOffset: 0.42,
-            anchoredTop: resting.maxY
-        )
-
-        #expect(expanded.maxY == resting.maxY)
-        #expect(expanded.minY < resting.minY)
-        #expect(
-            CapacityDockMotion.railTransaction(
-                fromFrame: resting,
-                toFrame: expanded,
-                attachmentFrom: 1,
-                attachmentTo: 1
-            ) == .railExpand
-        )
-    }
-
-    @Test("top-anchored interpolation grows downward without moving the top edge")
-    func topAnchoredInterpolation() {
-        let from = CGRect(x: 1352, y: 644, width: 76, height: 100)
-        let to = CGRect(x: 1352, y: 384, width: 76, height: 360)
-
-        let mid = CapacityDockMotion.interpolateTopAnchored(from: from, to: to, progress: 0.5)
-        #expect(mid.maxY == from.maxY)
-        #expect(mid.maxY == to.maxY)
-        #expect(mid.minY == 514)
-        #expect(mid.height == 230)
-
-        let start = CapacityDockMotion.interpolateTopAnchored(from: from, to: to, progress: 0)
-        let end = CapacityDockMotion.interpolateTopAnchored(from: from, to: to, progress: 1)
-        #expect(start == from)
-        #expect(end == to)
     }
 
     @Test("attachment interpolation keeps every physical edge stationary")
@@ -204,93 +157,109 @@ struct CapacityDockMotionTests {
         }
     }
 
-    @Test("rail expansion preserves a stable anchor in floating and docked modes")
-    func railExpansionAnchorPolicy() {
-        let floatingFrom = CGRect(x: 640, y: 500, width: 88, height: 112)
-        let floatingTo = CGRect(x: 640, y: 224, width: 88, height: 388)
-        let rightFrom = CGRect(x: 1330, y: 500, width: 110, height: 112)
-        let rightTo = CGRect(x: 1330, y: 224, width: 110, height: 388)
+    @Test("center-anchored collapse keeps the preferred ring on screen")
+    func centerAnchoredCollapseKeepsPreferred() {
+        let expandedPreferredAlong: CGFloat = 150
+        let restPreferredAlong: CGFloat = 20
+        let preferredY: CGFloat = 650
+        let from = CGRect(x: 1330, y: preferredY - (300 - expandedPreferredAlong), width: 72, height: 300)
+        let to = CGRect(x: 1330, y: preferredY - (100 - restPreferredAlong), width: 72, height: 100)
+        #expect(from.maxY - expandedPreferredAlong == preferredY)
+        #expect(to.maxY - restPreferredAlong == preferredY)
 
-        for progress: CGFloat in [0.15, 0.5, 0.85] {
-            let floating = CapacityDockMotion.interpolateRail(
-                from: floatingFrom,
-                to: floatingTo,
-                dockedEdge: nil,
+        for progress: CGFloat in [0, 0.2, 0.5, 0.8, 1] {
+            let frame = CapacityDockMotion.interpolateAttachedEdge(
+                from: from,
+                to: to,
+                edge: .right,
+                expansionAnchor: .center,
                 progress: progress
             )
-            #expect(floating.minX == floatingFrom.minX)
-            #expect(floating.maxY == floatingFrom.maxY)
-
-            let attached = CapacityDockMotion.interpolateRail(
-                from: rightFrom,
-                to: rightTo,
-                dockedEdge: .right,
-                expansionAnchor: .start,
-                progress: progress
-            )
-            #expect(attached.maxX == rightFrom.maxX)
-            #expect(attached.maxY == rightFrom.maxY)
-        }
-
-
-        let bottomFrom = CGRect(x: 1352, y: 24, width: 88, height: 112)
-        let bottomTo = CGRect(x: 1352, y: 24, width: 88, height: 388)
-        for progress: CGFloat in [0.15, 0.5, 0.85] {
-            let attached = CapacityDockMotion.interpolateRail(
-                from: bottomFrom,
-                to: bottomTo,
-                dockedEdge: .right,
-                expansionAnchor: .end,
-                progress: progress
-            )
-            #expect(attached.minY == bottomFrom.minY)
-            #expect(attached.maxX == bottomFrom.maxX)
+            let preferredAlong = expandedPreferredAlong
+                + (restPreferredAlong - expandedPreferredAlong) * progress
+            #expect(abs((frame.maxY - preferredAlong) - preferredY) < 0.000_001)
+            #expect(frame.maxX == from.maxX)
         }
     }
 
-    @Test("floating layout anchors preserve the requested expansion direction")
+    @Test("floating center anchors lock the preferred ring, not the window midpoint")
     func floatingLayoutAnchors() {
         let frame = CGRect(x: 500.25, y: 300.25, width: 112, height: 88)
-
-        let verticalStart = CapacityDockMotion.floatingRailAnchors(
+        let preferredY: CGFloat = 640
+        let verticalCenter = CapacityDockMotion.floatingRailAnchors(
             frame: frame,
             preservedTop: 420.5,
             isVertical: true,
-            expansionAnchor: .start
+            expansionAnchor: .center,
+            preferredAxisCoordinate: preferredY
         )
-        #expect(verticalStart.top == 420.5)
-        #expect(verticalStart.leading == frame.minX)
-        #expect(verticalStart.axisCoordinate == nil)
+        #expect(verticalCenter.top == nil)
+        #expect(verticalCenter.leading == frame.minX)
+        #expect(verticalCenter.axisCoordinate == preferredY)
+        #expect(verticalCenter.axisCoordinate != frame.midY)
 
-        let verticalEnd = CapacityDockMotion.floatingRailAnchors(
-            frame: frame,
-            preservedTop: 420.5,
-            isVertical: true,
-            expansionAnchor: .end
-        )
-        #expect(verticalEnd.top == nil)
-        #expect(verticalEnd.leading == frame.minX)
-        #expect(verticalEnd.axisCoordinate == frame.minY)
-
-        let horizontalStart = CapacityDockMotion.floatingRailAnchors(
+        let preferredX: CGFloat = 512
+        let horizontalCenter = CapacityDockMotion.floatingRailAnchors(
             frame: frame,
             preservedTop: 420.5,
             isVertical: false,
-            expansionAnchor: .start
+            expansionAnchor: .center,
+            preferredAxisCoordinate: preferredX
         )
-        #expect(horizontalStart.top == 420.5)
-        #expect(horizontalStart.leading == frame.minX)
-        #expect(horizontalStart.axisCoordinate == nil)
+        #expect(horizontalCenter.leading == nil)
+        #expect(horizontalCenter.axisCoordinate == preferredX)
+        #expect(horizontalCenter.axisCoordinate != frame.midX)
+    }
 
-        let horizontalEnd = CapacityDockMotion.floatingRailAnchors(
-            frame: frame,
-            preservedTop: 420.5,
-            isVertical: false,
-            expansionAnchor: .end
+    @Test("floating center collapse keeps the preferred ring on screen")
+    func floatingCenterCollapseKeepsPreferred() {
+        let expandedPreferredAlong: CGFloat = 82
+        let restPreferredAlong: CGFloat = 10
+        let preferredY: CGFloat = 520
+        let from = CGRect(
+            x: 640,
+            y: preferredY - (278 - expandedPreferredAlong),
+            width: 72,
+            height: 278
         )
-        #expect(horizontalEnd.top == 420.5)
-        #expect(horizontalEnd.leading == nil)
-        #expect(horizontalEnd.axisCoordinate == frame.maxX)
+        let to = CGRect(
+            x: 640,
+            y: preferredY - (134 - restPreferredAlong),
+            width: 72,
+            height: 134
+        )
+        #expect(from.maxY - expandedPreferredAlong == preferredY)
+        #expect(to.maxY - restPreferredAlong == preferredY)
+
+        let visible = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        let anchored = CapacityDockPlacement.railFrame(
+            screenFrame: visible,
+            visibleFrame: visible,
+            size: to.size,
+            dockedEdge: nil,
+            normalizedHorizontalOffset: nil,
+            normalizedTopOffset: nil,
+            anchoredLeading: from.minX,
+            anchoredAxisCoordinate: preferredY,
+            expansionAnchor: .center,
+            anchorAlongOffset: restPreferredAlong
+        )
+        #expect(abs((anchored.maxY - restPreferredAlong) - preferredY) < 0.000_001)
+        #expect(anchored.minX == from.minX)
+
+        for progress: CGFloat in [0, 0.25, 0.5, 0.75, 1] {
+            let frame = CapacityDockMotion.interpolateRail(
+                from: from,
+                to: to,
+                dockedEdge: nil,
+                expansionAnchor: .center,
+                progress: progress
+            )
+            let preferredAlong = expandedPreferredAlong
+                + (restPreferredAlong - expandedPreferredAlong) * progress
+            #expect(abs((frame.maxY - preferredAlong) - preferredY) < 0.000_001)
+            #expect(frame.minX == from.minX)
+        }
     }
 
     @Test("rail frames land on backing pixels without releasing their visual anchor")
@@ -298,38 +267,24 @@ struct CapacityDockMotionTests {
         let floating = CapacityDockMotion.pixelAlignedRailFrame(
             CGRect(x: 640.13, y: 500.08, width: 88.17, height: 112.19),
             backingScale: 2,
-            dockedEdge: nil
+            dockedEdge: nil,
+            expansionAnchor: .center
         )
         #expect(floating.minX == 640)
-        #expect(floating.maxY == 612.5)
+        #expect(floating.minY == 500)
         #expect(floating.width == 88)
         #expect(floating.height == 112)
 
         let attached = CapacityDockMotion.pixelAlignedRailFrame(
             CGRect(x: 1330.08, y: 499.94, width: 109.87, height: 112.19),
             backingScale: 2,
-            dockedEdge: .right
+            dockedEdge: .right,
+            expansionAnchor: .center
         )
         #expect(attached.maxX == 1440)
-        #expect(attached.maxY == 612)
-
-        let bottomAnchored = CapacityDockMotion.pixelAlignedRailFrame(
-            CGRect(x: 1330.08, y: 28.13, width: 109.87, height: 112.19),
-            backingScale: 2,
-            dockedEdge: .right,
-            expansionAnchor: .end
-        )
-        #expect(bottomAnchored.minY == 28)
-        #expect(bottomAnchored.maxX == 1440)
-
-        let rightAnchored = CapacityDockMotion.pixelAlignedRailFrame(
-            CGRect(x: 800.13, y: 790.08, width: 612.19, height: 88.17),
-            backingScale: 2,
-            dockedEdge: .top,
-            expansionAnchor: .end
-        )
-        #expect(rightAnchored.maxX == 1412.5)
-        #expect(rightAnchored.maxY == 878.5)
+        #expect(attached.minY == 500)
+        #expect(attached.width == 110)
+        #expect(attached.height == 112)
     }
 
     @Test("pixel-aligned reveal progress follows the frame instead of the timer")
@@ -341,12 +296,14 @@ struct CapacityDockMotionTests {
             from: from,
             to: to,
             dockedEdge: nil,
+            expansionAnchor: .center,
             progress: 0.4001
         )
         let secondRaw = CapacityDockMotion.interpolateRail(
             from: from,
             to: to,
             dockedEdge: nil,
+            expansionAnchor: .center,
             progress: 0.4002
         )
         let first = CapacityDockMotion.alignedRailSample(
@@ -357,7 +314,7 @@ struct CapacityDockMotionTests {
             toPresentationProgress: 1,
             backingScale: 2,
             dockedEdge: nil,
-            expansionAnchor: .start,
+            expansionAnchor: .center,
             isVertical: true
         )
         let second = CapacityDockMotion.alignedRailSample(
@@ -368,119 +325,13 @@ struct CapacityDockMotionTests {
             toPresentationProgress: 1,
             backingScale: 2,
             dockedEdge: nil,
-            expansionAnchor: .start,
+            expansionAnchor: .center,
             isVertical: true
         )
 
         #expect(first.frame == second.frame)
         #expect(first.presentationProgress == second.presentationProgress)
         #expect(abs(first.frame.height - (112 + 276 * first.presentationProgress)) < 0.000_001)
-    }
-
-    @Test("fractional rail motion never releases its snapped anchor")
-    func fractionalMotionKeepsSnappedAnchor() {
-        let verticalFrom = CGRect(x: 640.13, y: 500.08, width: 88.17, height: 112.19)
-        let verticalTo = CGRect(x: 640.13, y: 224.08, width: 88.17, height: 388.19)
-        let horizontalFrom = CGRect(x: 500.08, y: 740.13, width: 112.19, height: 88.17)
-        let horizontalTo = CGRect(x: 224.08, y: 740.13, width: 388.19, height: 88.17)
-        var priorVerticalHeight: CGFloat = 0
-        var priorHorizontalWidth: CGFloat = 0
-
-        for step in 0...120 {
-            let progress = CGFloat(step) / 120
-            let verticalRaw = CapacityDockMotion.interpolateRail(
-                from: verticalFrom,
-                to: verticalTo,
-                dockedEdge: nil,
-                expansionAnchor: .start,
-                progress: progress
-            )
-            let vertical = CapacityDockMotion.alignedRailSample(
-                verticalRaw,
-                fromFrame: verticalFrom,
-                toFrame: verticalTo,
-                fromPresentationProgress: 0,
-                toPresentationProgress: 1,
-                backingScale: 2,
-                dockedEdge: nil,
-                expansionAnchor: .start,
-                isVertical: true
-            )
-            #expect(vertical.frame.maxY == 612.5)
-            #expect(vertical.frame.height >= priorVerticalHeight)
-            priorVerticalHeight = vertical.frame.height
-
-            let horizontalRaw = CapacityDockMotion.interpolateRail(
-                from: horizontalFrom,
-                to: horizontalTo,
-                dockedEdge: nil,
-                expansionAnchor: .end,
-                progress: progress
-            )
-            let horizontal = CapacityDockMotion.alignedRailSample(
-                horizontalRaw,
-                fromFrame: horizontalFrom,
-                toFrame: horizontalTo,
-                fromPresentationProgress: 0,
-                toPresentationProgress: 1,
-                backingScale: 2,
-                dockedEdge: nil,
-                expansionAnchor: .end,
-                isVertical: false
-            )
-            #expect(horizontal.frame.maxX == 612.5)
-            #expect(horizontal.frame.width >= priorHorizontalWidth)
-            priorHorizontalWidth = horizontal.frame.width
-        }
-
-        priorVerticalHeight = .greatestFiniteMagnitude
-        priorHorizontalWidth = .greatestFiniteMagnitude
-        for step in 0...120 {
-            let progress = CGFloat(step) / 120
-            let verticalRaw = CapacityDockMotion.interpolateRail(
-                from: verticalTo,
-                to: verticalFrom,
-                dockedEdge: nil,
-                expansionAnchor: .start,
-                progress: progress
-            )
-            let vertical = CapacityDockMotion.alignedRailSample(
-                verticalRaw,
-                fromFrame: verticalTo,
-                toFrame: verticalFrom,
-                fromPresentationProgress: 1,
-                toPresentationProgress: 0,
-                backingScale: 2,
-                dockedEdge: nil,
-                expansionAnchor: .start,
-                isVertical: true
-            )
-            #expect(vertical.frame.maxY == 612.5)
-            #expect(vertical.frame.height <= priorVerticalHeight)
-            priorVerticalHeight = vertical.frame.height
-
-            let horizontalRaw = CapacityDockMotion.interpolateRail(
-                from: horizontalTo,
-                to: horizontalFrom,
-                dockedEdge: nil,
-                expansionAnchor: .end,
-                progress: progress
-            )
-            let horizontal = CapacityDockMotion.alignedRailSample(
-                horizontalRaw,
-                fromFrame: horizontalTo,
-                toFrame: horizontalFrom,
-                fromPresentationProgress: 1,
-                toPresentationProgress: 0,
-                backingScale: 2,
-                dockedEdge: nil,
-                expansionAnchor: .end,
-                isVertical: false
-            )
-            #expect(horizontal.frame.maxX == 612.5)
-            #expect(horizontal.frame.width <= priorHorizontalWidth)
-            priorHorizontalWidth = horizontal.frame.width
-        }
     }
 
     @Test("immediate easing is linear and other curves stay bounded")
@@ -493,13 +344,5 @@ struct CapacityDockMotionTests {
         #expect(mid > 0)
         #expect(mid < 1)
         #expect(CapacityDockMotion.easedProgress(for: .railExpand, linear: 0.25) > 0.5)
-    }
-
-    @Test("bubble alpha fades in on present and out on dismiss")
-    func detailAlpha() {
-        #expect(CapacityDockMotion.alpha(for: .detailPresent, progress: 0, fadingOut: false) == 0)
-        #expect(CapacityDockMotion.alpha(for: .detailPresent, progress: 1, fadingOut: false) == 1)
-        #expect(CapacityDockMotion.alpha(for: .detailDismiss, progress: 0, fadingOut: true) == 1)
-        #expect(CapacityDockMotion.alpha(for: .detailDismiss, progress: 1, fadingOut: true) == 0)
     }
 }

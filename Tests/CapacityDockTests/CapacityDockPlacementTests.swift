@@ -76,30 +76,6 @@ struct CapacityDockPlacementTests {
         ) - 0.42) < 0.000_001)
     }
 
-    @Test("expanding the rail preserves its existing top edge")
-    func expansionKeepsTopAnchored() {
-        let resting = CapacityDockPlacement.railFrame(
-            screenFrame: visibleFrame,
-            visibleFrame: visibleFrame,
-            size: CGSize(width: 76, height: 100),
-            dockedEdge: .right,
-            normalizedHorizontalOffset: nil,
-            normalizedTopOffset: 0.42
-        )
-        let expanded = CapacityDockPlacement.railFrame(
-            screenFrame: visibleFrame,
-            visibleFrame: visibleFrame,
-            size: CGSize(width: 76, height: 360),
-            dockedEdge: .right,
-            normalizedHorizontalOffset: nil,
-            normalizedTopOffset: 0.42,
-            anchoredTop: resting.maxY
-        )
-
-        #expect(expanded.maxY == resting.maxY)
-        #expect(expanded.minY < resting.minY)
-    }
-
     @Test("floating placement preserves generous screen margins and round-trips horizontally")
     func floatingPlacement() {
         let frame = CapacityDockPlacement.railFrame(
@@ -374,35 +350,6 @@ struct CapacityDockPlacementTests {
             visibleFrame: visibleFrame,
             edge: .top
         ) == .center)
-    }
-
-    @Test("expanded edge frames preserve the resting end instead of recentering")
-    func relativeExpandedFrame() {
-        let compactBottom = CGRect(x: 1352, y: 28, width: 88, height: 112)
-        let expandedUp = CapacityDockPlacement.railFrame(
-            screenFrame: visibleFrame,
-            visibleFrame: visibleFrame,
-            size: CGSize(width: 88, height: 500),
-            dockedEdge: .right,
-            normalizedHorizontalOffset: nil,
-            normalizedTopOffset: nil,
-            anchoredAxisCoordinate: compactBottom.minY,
-            expansionAnchor: .end
-        )
-        #expect(expandedUp.minY == compactBottom.minY)
-
-        let compactRight = CGRect(x: 1300, y: 812, width: 112, height: 88)
-        let expandedLeft = CapacityDockPlacement.railFrame(
-            screenFrame: visibleFrame,
-            visibleFrame: visibleFrame,
-            size: CGSize(width: 700, height: 88),
-            dockedEdge: .top,
-            normalizedHorizontalOffset: nil,
-            normalizedTopOffset: nil,
-            anchoredAxisCoordinate: compactRight.maxX,
-            expansionAnchor: .end
-        )
-        #expect(expandedLeft.maxX == compactRight.maxX)
     }
 
     @Test("detail bubble sits left of the rail and stays vertically centered on its row")

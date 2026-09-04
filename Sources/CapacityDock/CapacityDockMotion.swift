@@ -2,8 +2,8 @@ import CoreGraphics
 import Foundation
 
 /// Pure motion policy for Capacity Dock. The controller owns AppKit animation;
-/// this type only answers durations, timing, and the top-anchored expand/collapse
-/// and bubble presentation offsets.
+/// this type only answers durations, timing, and the center-anchored
+/// expand/collapse and bubble presentation offsets.
 enum CapacityDockMotion {
     struct RailFrameSample: Equatable {
         let frame: CGRect
@@ -25,6 +25,7 @@ enum CapacityDockMotion {
         case detailPresent
         case detailFollow
         case detailDismiss
+        case preferredReorder
     }
 
     static let railExpandDuration: TimeInterval = 0.52
@@ -36,6 +37,20 @@ enum CapacityDockMotion {
     static let detailPresentDuration: TimeInterval = 0.20
     static let detailFollowDuration: TimeInterval = 0.16
     static let detailDismissDuration: TimeInterval = 0.14
+    static let preferredReorderDuration: TimeInterval = 0.35
+    static let preferredReorderResponse: TimeInterval = 0.35
+    static let preferredReorderDamping: CGFloat = 0.86
+    static let hoverEmphasisResponse: TimeInterval = 0.16
+    static let hoverEmphasisDamping: CGFloat = 1.0
+    static let hoverEmphasisTravel: CGFloat = 7
+    static let hoverEmphasisScaleLift: CGFloat = 0.08
+    /// Extras split from the preferred ring with the rail expand ease-out.
+    /// Overshoot is avoided so rings never travel into the scooped corners.
+    static let extraIconRevealDuration: TimeInterval = 0.55
+    static let extraIconRevealStagger: TimeInterval = 0.040
+    static let extraIconCollapseDuration: TimeInterval = 0.12
+    static let extraIconSlotThreshold: CGFloat = 0.88
+    static let extraIconAppearScale: CGFloat = 0.86
     static let detailAppearOffset: CGFloat = 10
     static let heightEpsilon: CGFloat = 0.5
 
@@ -53,6 +68,7 @@ enum CapacityDockMotion {
         case .detailPresent: return detailPresentDuration
         case .detailFollow: return detailFollowDuration
         case .detailDismiss: return detailDismissDuration
+        case .preferredReorder: return preferredReorderDuration
         }
     }
 
@@ -85,6 +101,8 @@ enum CapacityDockMotion {
             return (0.16, 1, 0.3, 1)
         case .detailDismiss:
             return (0.4, 0, 1, 1)
+        case .preferredReorder:
+            return (0.22, 1, 0.36, 1)
         }
     }
 
@@ -204,7 +222,8 @@ enum CapacityDockMotion {
         frame: CGRect,
         preservedTop: CGFloat? = nil,
         isVertical: Bool,
-        expansionAnchor: CapacityDockExpansionAnchor
+        expansionAnchor: CapacityDockExpansionAnchor,
+        preferredAxisCoordinate: CGFloat? = nil
     ) -> FloatingRailAnchors {
         if isVertical {
             switch expansionAnchor {
@@ -212,7 +231,7 @@ enum CapacityDockMotion {
                 return FloatingRailAnchors(
                     top: nil,
                     leading: frame.minX,
-                    axisCoordinate: frame.midY
+                    axisCoordinate: preferredAxisCoordinate
                 )
             case .start:
                 return FloatingRailAnchors(
@@ -233,7 +252,7 @@ enum CapacityDockMotion {
             return FloatingRailAnchors(
                 top: preservedTop ?? frame.maxY,
                 leading: nil,
-                axisCoordinate: frame.midX
+                axisCoordinate: preferredAxisCoordinate
             )
         case .start:
             return FloatingRailAnchors(
@@ -440,11 +459,6 @@ enum CapacityDockMotion {
             guess -= delta / derivative
         }
         return sampleCurveY(min(max(guess, 0), 1), p1y: p1y, p2y: p2y)
-    }
-
-    static func alpha(for transaction: Transaction, progress: CGFloat, fadingOut: Bool) -> CGFloat {
-        let t = min(max(progress, 0), 1)
-        return fadingOut ? 1 - t : t
     }
 
     private static func detailOffset(side: CapacityDockEdge, amount: CGFloat) -> CGSize {

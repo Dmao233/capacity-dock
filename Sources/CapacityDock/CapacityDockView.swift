@@ -13,7 +13,6 @@ enum CapacityDockMetrics {
     // rings inside, settings orb revealed with the expand animation.
     private static let baseRailWidth: CGFloat = 72
     private static let baseHorizontalRailWidth: CGFloat = 78
-    private static let baseEdgeFlareWidth: CGFloat = 0
     private static let baseEdgeShoulderDepth: CGFloat = 72
     private static let baseRowHeight: CGFloat = 62
     private static let baseRowSpacing: CGFloat = 10
@@ -42,7 +41,6 @@ enum CapacityDockMetrics {
 
     static func railWidth(scale: CGFloat) -> CGFloat { points(baseRailWidth, scale) }
     static func horizontalRailWidth(scale: CGFloat) -> CGFloat { points(baseHorizontalRailWidth, scale) }
-    static func edgeFlareWidth(scale: CGFloat) -> CGFloat { points(baseEdgeFlareWidth, scale) }
     static func edgeShoulderDepth(scale: CGFloat) -> CGFloat { points(baseEdgeShoulderDepth, scale) }
     static func rowHeight(scale: CGFloat) -> CGFloat { points(baseRowHeight, scale) }
     static func rowSpacing(scale: CGFloat) -> CGFloat { points(baseRowSpacing, scale) }
@@ -64,6 +62,10 @@ enum CapacityDockMetrics {
     }
     static func settingsCapDetachedSlot(scale: CGFloat) -> CGFloat {
         settingsCapDetachedGap(scale: scale) + settingsCapOrbSize(scale: scale)
+    }
+
+    static func hoverEmphasisTravel(scale: CGFloat) -> CGFloat {
+        points(CapacityDockMotion.hoverEmphasisTravel, scale)
     }
 
     static func railHeight(providerCount: Int, alongPad: CGFloat, scale: CGFloat) -> CGFloat {
@@ -103,9 +105,13 @@ final class CapacityDockViewModel {
     var preferences: CapacityDockPreferences.Snapshot
     var interaction = CapacityDockInteractionState()
     var hoveredProvider: CapacityDockProvider?
+    var highlightedProvider: CapacityDockProvider?
     var detailHeight: CGFloat = 164
     var isRailPresentationExpanded = false
     var railPresentationProgress: CGFloat = 0
+    var isRailMotionActive = false
+    var hidesExtraIcons = false
+    var extraIconRevealSettled = false
     var dockedEdge: CapacityDockEdge?
     var attachmentEdge: CapacityDockEdge
     var attachmentProgress: CGFloat
@@ -137,14 +143,27 @@ final class CapacityDockViewModel {
     /// Distance from the body start (top / leading) to the preferred row.
     /// Interpolates so the preferred ring stays on screen while extra rows
     /// grow both ways.
-    func preferredAlongOffset(itemCount: Int? = nil, progress: CGFloat? = nil) -> CGFloat {
+    func preferredAlongOffset(
+        itemCount: Int? = nil,
+        progress: CGFloat? = nil,
+        bodyLength: CGFloat? = nil
+    ) -> CGFloat {
         let count = itemCount ?? displayedRailItems.count
         let others = max(preferences.selectedProviders.count - 1, 0)
         let index = count <= 1 ? 0 : min(others / 2, count - 1)
         let rest = railAlongPad
         let expanded = railAlongPad + CGFloat(index) * (rowHeight + rowSpacing)
-        if preferences.keepExpanded { return expanded }
-        let t = progress ?? min(max(railPresentationProgress, 0), 1)
+        let t: CGFloat
+        if let bodyLength {
+            let delta = expandedBodyLength - restingBodyLength
+            t = abs(delta) < 0.000_001
+                ? 1
+                : min(max((bodyLength - restingBodyLength) / delta, 0), 1)
+        } else if preferences.keepExpanded {
+            t = 1
+        } else {
+            t = progress ?? min(max(railPresentationProgress, 0), 1)
+        }
         return rest + (expanded - rest) * t
     }
 
@@ -183,8 +202,9 @@ final class CapacityDockViewModel {
     }
 
     func orbFrames(in bounds: CGRect) -> [CGRect] {
-        CapacityDockOrbStack.itemFrames(
-            in: notchBodyFrame(in: bounds),
+        let body = notchBodyFrame(in: bounds)
+        let frames = CapacityDockOrbStack.itemFrames(
+            in: CGRect(origin: .zero, size: body.size),
             itemCount: displayedRailItems.count,
             isVertical: isVertical,
             expansionAnchor: expansionAnchor,
@@ -194,17 +214,40 @@ final class CapacityDockViewModel {
             crossPad: railCrossPad,
             crossExtent: railWidth,
             preferredIndex: preferredItemIndex,
-            preferredAlong: preferredAlongOffset()
+            preferredAlong: preferredAlongOffset(bodyLength: isVertical ? body.height : body.width)
         )
+        return frames.map { $0.offsetBy(dx: body.minX, dy: body.minY) }
     }
 
     func notchBodyFrame(in bounds: CGRect) -> CGRect {
+        let cap = settingsCapRevealLength(forAttachmentProgress: attachmentProgress)
+            * presentationReveal
         if isVertical {
-            let y = expansionAnchor.packsFromStart ? bounds.minY : bounds.maxY - bodyLength
-            return CGRect(x: bounds.minX, y: y, width: bounds.width, height: bodyLength)
+            let length = max(0, bounds.height - cap)
+            let y = expansionAnchor.packsFromStart ? bounds.minY : bounds.maxY - length
+            let x: CGFloat
+            switch dockedEdge {
+            case .right:
+                x = bounds.maxX - railWidth
+            case .left:
+                x = bounds.minX
+            default:
+                x = bounds.minX + max(0, bounds.width - railWidth) / 2
+            }
+            return CGRect(x: x, y: y, width: railWidth, height: length)
         }
-        let x = expansionAnchor.packsFromStart ? bounds.minX : bounds.maxX - bodyLength
-        return CGRect(x: x, y: bounds.minY, width: bodyLength, height: bounds.height)
+        let length = max(0, bounds.width - cap)
+        let x = expansionAnchor.packsFromStart ? bounds.minX : bounds.maxX - length
+        let y: CGFloat
+        switch dockedEdge {
+        case .top:
+            y = bounds.minY
+        case .bottom:
+            y = bounds.maxY - railWidth
+        default:
+            y = bounds.minY + max(0, bounds.height - railWidth) / 2
+        }
+        return CGRect(x: x, y: y, width: length, height: railWidth)
     }
 
     func settingsCapFrame(in bounds: CGRect) -> CGRect {
@@ -226,6 +269,30 @@ final class CapacityDockViewModel {
         let body = notchBodyFrame(in: bounds)
         return railShape.path(in: body).contains(point)
             || containsSettingsCap(point, in: bounds)
+            || pointerTarget(at: point, in: bounds, slop: 2) != nil
+    }
+
+    /// Hidden extras stay in the view tree so they can fade, but they must
+    /// not steal hover or detail from the preferred ring or empty scoop.
+    func pointerTarget(
+        at point: CGPoint,
+        in bounds: CGRect,
+        slop: CGFloat,
+        preferring: CapacityDockRailItem? = nil
+    ) -> CapacityDockRailItem? {
+        let frames = orbFrames(in: bounds)
+        if let preferring,
+           extraRevealVisible(for: preferring),
+           let index = displayedRailItems.firstIndex(of: preferring),
+           frames.indices.contains(index),
+           frames[index].insetBy(dx: -slop, dy: -slop).contains(point) {
+            return preferring
+        }
+        for (item, frame) in zip(displayedRailItems, frames) {
+            guard extraRevealVisible(for: item) else { continue }
+            if frame.insetBy(dx: -slop, dy: -slop).contains(point) { return item }
+        }
+        return nil
     }
 
     func settingsCapSlotFrame(in bounds: CGRect) -> CGRect {
@@ -318,8 +385,6 @@ final class CapacityDockViewModel {
             ? CapacityDockMetrics.railWidth(scale: scale)
             : CapacityDockMetrics.horizontalRailWidth(scale: scale)
     }
-    var edgeFlareWidth: CGFloat { CapacityDockMetrics.edgeFlareWidth(scale: scale) }
-    var isDocked: Bool { dockedEdge != nil }
     var isVertical: Bool { attachmentEdge.isVertical }
     var bodySize: CGSize {
         isVertical
@@ -330,16 +395,20 @@ final class CapacityDockViewModel {
         panelSize(forAttachmentProgress: attachmentProgress)
     }
     func panelSize(forAttachmentProgress progress: CGFloat) -> CGSize {
-        panelSize(bodyLength: bodyLength, attachmentProgress: progress)
+        panelSize(bodyLength: bodyLength, attachmentProgress: progress, reveal: presentationReveal)
     }
     func targetPanelSize(forAttachmentProgress progress: CGFloat) -> CGSize {
-        panelSize(bodyLength: targetBodyLength, attachmentProgress: progress)
-    }
-    private func panelSize(bodyLength: CGFloat, attachmentProgress progress: CGFloat) -> CGSize {
-        let reveal = min(
-            max(max(railPresentationProgress, settingsCapProgress, preferences.keepExpanded ? 1 : 0), 0),
-            1
+        panelSize(
+            bodyLength: targetBodyLength,
+            attachmentProgress: progress,
+            reveal: targetPresentationReveal
         )
+    }
+    private func panelSize(
+        bodyLength: CGFloat,
+        attachmentProgress progress: CGFloat,
+        reveal: CGFloat
+    ) -> CGSize {
         let cap = settingsCapRevealLength(forAttachmentProgress: progress) * reveal
         return isVertical
             ? CGSize(width: railWidth, height: bodyLength + cap)
@@ -359,8 +428,7 @@ final class CapacityDockViewModel {
     var rowSpacing: CGFloat { CapacityDockMetrics.rowSpacing(scale: scale) }
     // Along-axis content padding: small when floating, plus the docked concave
     // flare depth so content never crowds a necked edge. Cross-axis is a small
-    // fixed margin. railTop/BottomPadding stay as the names the controller's
-    // detail-tail math reads.
+    // fixed margin.
     var flareCompensation: CGFloat {
         let p = min(max(attachmentProgress, 0), 1)
         let eased = p * p * (3 - 2 * p)
@@ -368,20 +436,139 @@ final class CapacityDockViewModel {
     }
     var railAlongPad: CGFloat { CapacityDockMetrics.railAlongPad(scale: scale) + flareCompensation }
     var railCrossPad: CGFloat { CapacityDockMetrics.railCrossPad(scale: scale) }
-    var railTopPadding: CGFloat { railAlongPad }
-    var railBottomPadding: CGFloat { railAlongPad }
     var detailWidth: CGFloat { CapacityDockMetrics.detailWidth(scale: detailScale) }
 
+    var presentationReveal: CGFloat {
+        min(
+            max(max(railPresentationProgress, settingsCapProgress, preferences.keepExpanded ? 1 : 0), 0),
+            1
+        )
+    }
+
+    var targetPresentationReveal: CGFloat {
+        if preferences.keepExpanded || wantsExpandedRail { return 1 }
+        return min(max(settingsCapProgress, 0), 1)
+    }
+
+    var allowsItemEmphasis: Bool {
+        !isRailMotionActive
+            && railPresentationProgress >= 0.999
+            && (preferences.keepExpanded || extraIconRevealSettled)
+            && (wantsExpandedRail || preferences.keepExpanded)
+    }
+
+    var emphasizedProvider: CapacityDockProvider? {
+        guard allowsItemEmphasis else { return nil }
+        return highlightedProvider ?? hoveredProvider
+    }
+
+    var emphasizedItemIndex: Int? {
+        guard let provider = emphasizedProvider else { return nil }
+        return displayedRailItems.firstIndex(of: .provider(provider))
+    }
+
+    func isEmphasized(_ item: CapacityDockRailItem) -> Bool {
+        guard let provider = emphasizedProvider,
+              case .provider(let itemProvider) = item else { return false }
+        return itemProvider == provider
+    }
+
+    func itemEmphasisPeekLength() -> CGFloat {
+        guard dockedEdge != nil, emphasizedProvider != nil else { return 0 }
+        return CapacityDockMetrics.hoverEmphasisTravel(scale: scale)
+    }
+
+    var itemEmphasisOffset: CGSize {
+        guard let edge = dockedEdge, emphasizedProvider != nil else { return .zero }
+        let amount = itemEmphasisPeekLength()
+        switch edge {
+        case .right: return CGSize(width: -amount, height: 0)
+        case .left: return CGSize(width: amount, height: 0)
+        case .top: return CGSize(width: 0, height: amount)
+        case .bottom: return CGSize(width: 0, height: -amount)
+        }
+    }
+
+    func presentationScale(for item: CapacityDockRailItem) -> CGFloat {
+        guard isEmphasized(item) else { return 1 }
+        return 1 + CapacityDockMotion.hoverEmphasisScaleLift
+    }
+
     func presentationOpacity(for provider: CapacityDockProvider) -> CGFloat {
-        if preferences.keepExpanded { return 1 }
-        return provider == preferences.preferredProvider ? 1 : railPresentationProgress
+        presentationOpacity(for: .provider(provider))
+    }
+
+    func extraSlotDistance(for item: CapacityDockRailItem) -> Int {
+        guard let index = displayedRailItems.firstIndex(of: item) else { return 0 }
+        return abs(index - preferredItemIndex)
+    }
+
+    func extraSlotReady(_ item: CapacityDockRailItem, bodyLength alongLength: CGFloat? = nil) -> Bool {
+        let distance = extraSlotDistance(for: item)
+        if distance == 0 { return true }
+        let rowsNeeded = min(1 + 2 * distance, max(displayedRailItems.count, 1))
+        let needed = CapacityDockMetrics.railHeight(
+            providerCount: rowsNeeded,
+            alongPad: railAlongPad,
+            scale: scale
+        )
+        let start = restingBodyLength
+            + (needed - restingBodyLength) * CapacityDockMotion.extraIconSlotThreshold
+        return (alongLength ?? bodyLength) >= start - 0.5
+    }
+
+    func extraRevealVisible(for item: CapacityDockRailItem) -> Bool {
+        if preferences.keepExpanded { return true }
+        if isRestingItem(item) { return true }
+        if hidesExtraIcons { return false }
+        guard showsAllProviders else { return false }
+        return extraSlotReady(item)
+    }
+
+    func extraAppearScale(for item: CapacityDockRailItem) -> CGFloat {
+        extraRevealVisible(for: item) ? 1 : CapacityDockMotion.extraIconAppearScale
+    }
+
+    func extraAppearOffset(for item: CapacityDockRailItem) -> CGSize {
+        // Collapse fades extras in place. Flying them toward preferred
+        // overshoots into the scooped corners and shifts the visual mass.
+        if hidesExtraIcons { return .zero }
+        if extraRevealVisible(for: item) || isRestingItem(item) { return .zero }
+        guard let index = displayedRailItems.firstIndex(of: item) else { return .zero }
+        let along = CGFloat(preferredItemIndex - index) * (rowHeight + rowSpacing)
+        return isVertical
+            ? CGSize(width: 0, height: along)
+            : CGSize(width: along, height: 0)
+    }
+
+    func extraRevealAnimation(for item: CapacityDockRailItem) -> Animation {
+        let distance = extraSlotDistance(for: item)
+        if hidesExtraIcons {
+            let farthest = displayedRailItems.map(extraSlotDistance(for:)).max() ?? 0
+            let delay = TimeInterval(max(farthest - distance, 0)) * CapacityDockMotion.extraIconRevealStagger
+            return Animation.easeIn(duration: CapacityDockMotion.extraIconCollapseDuration)
+                .delay(delay)
+        }
+        let points = CapacityDockMotion.timingControlPoints(for: .railExpand)
+        let curve = Animation.timingCurve(
+            Double(points.0),
+            Double(points.1),
+            Double(points.2),
+            Double(points.3),
+            duration: CapacityDockMotion.extraIconRevealDuration
+        )
+        let delay = TimeInterval(max(distance - 1, 0)) * CapacityDockMotion.extraIconRevealStagger
+        return curve.delay(delay)
+    }
+
+    var extraRevealSettleDelay: TimeInterval {
+        let farthest = displayedRailItems.map(extraSlotDistance(for:)).max() ?? 0
+        return CapacityDockMotion.extraIconRevealDuration
+            + TimeInterval(max(farthest - 1, 0)) * CapacityDockMotion.extraIconRevealStagger
     }
 
     func presentationOpacity(for item: CapacityDockRailItem) -> CGFloat {
-        switch item {
-        case .provider(let provider):
-            presentationOpacity(for: provider)
-        }
+        extraRevealVisible(for: item) ? 1 : 0
     }
 
     func isRestingItem(_ item: CapacityDockRailItem) -> Bool {
@@ -412,70 +599,61 @@ struct CapacityDockView: View {
 
     var body: some View {
         let _ = model.quotaEpoch
-        let railShape = model.railShape
-        let providerLayout = model.isVertical
-            ? AnyLayout(VStackLayout(spacing: model.rowSpacing))
-            : AnyLayout(HStackLayout(spacing: model.rowSpacing))
-        ZStack(alignment: revealAlignment) {
-            providerLayout {
-                ForEach(model.displayedRailItems) { item in
-                    railItem(item)
-                        .frame(
-                            width: model.isVertical ? model.railWidth : model.rowHeight,
-                            height: model.isVertical ? model.rowHeight : model.railWidth
-                        )
-                        .opacity(model.presentationOpacity(for: item))
-                        .offset(
-                            x: model.isVertical || model.isRestingItem(item)
-                                ? 0
-                                : -6 * model.scale * (1 - model.railPresentationProgress),
-                            y: !model.isVertical || model.isRestingItem(item)
-                                ? 0
-                                : -6 * model.scale * (1 - model.railPresentationProgress)
-                        )
+        GeometryReader { geo in
+            let railShape = model.railShape
+            let bounds = CGRect(origin: .zero, size: geo.size)
+            let bodyRect = model.notchBodyFrame(in: bounds)
+            let frames = model.orbFrames(in: bounds)
+            ZStack(alignment: .topLeading) {
+                railShape.fill(Color.black)
+                    .frame(width: bodyRect.width, height: bodyRect.height)
+                    .position(x: bodyRect.midX, y: bodyRect.midY)
+                ForEach(Array(model.displayedRailItems.enumerated()), id: \.element.id) { index, item in
+                    positionedRing(item, frame: frames.indices.contains(index) ? frames[index] : .zero)
                 }
             }
-            .padding(.top, model.isVertical ? model.railAlongPad : model.railCrossPad)
-            .padding(.bottom, model.isVertical ? model.railAlongPad : model.railCrossPad)
-            .padding(.leading, model.isVertical ? model.railCrossPad : model.railAlongPad)
-            .padding(.trailing, model.isVertical ? model.railCrossPad : model.railAlongPad)
-            .frame(
-                width: model.bodySize.width,
-                height: model.bodySize.height,
-                alignment: revealAlignment
+            .modifier(
+                CapacityDockExpandClip(
+                    enabled: model.railPresentationProgress < 0.999
+                        || model.isRailMotionActive
+                        || model.hidesExtraIcons
+                        || (model.attachmentProgress > 0.001
+                            && model.attachmentProgress < 0.999),
+                    rail: railShape,
+                    bodyRect: bodyRect
+                )
             )
-            .background(railShape.fill(Color.black))
-            .clipShape(railShape)
-            .contentShape(railShape)
+            .transaction { transaction in
+                if model.isRailMotionActive {
+                    transaction.animation = nil
+                }
+            }
+            .animation(nil, value: model.railPresentationProgress)
+            .animation(preferredReorderAnimation, value: model.preferences.preferredProvider)
+            .overlay {
+                let capReveal = max(
+                    model.railPresentationProgress,
+                    model.settingsCapProgress,
+                    model.preferences.keepExpanded ? 1 : 0
+                )
+                CapacityDockSettingsCap(
+                    progress: model.settingsCapProgress,
+                    scale: model.scale,
+                    edge: model.attachmentEdge,
+                    expansionAnchor: model.expansionAnchor,
+                    bodyRect: bodyRect,
+                    contactR: model.scoopContactRadius,
+                    onClick: onOpenSettings
+                )
+                .opacity(capReveal)
+                .allowsHitTesting(capReveal > 0.15)
+                .animation(
+                    .timingCurve(0.22, 1, 0.36, 1, duration: 0.32),
+                    value: model.settingsCapProgress
+                )
+            }
         }
-        .frame(
-            width: model.panelSize.width,
-            height: model.panelSize.height,
-            alignment: revealAlignment
-        )
-        .overlay {
-            let capReveal = max(
-                model.railPresentationProgress,
-                model.settingsCapProgress,
-                model.preferences.keepExpanded ? 1 : 0
-            )
-            let panel = CGRect(origin: .zero, size: model.panelSize)
-            CapacityDockSettingsCap(
-                progress: model.settingsCapProgress,
-                scale: model.scale,
-                edge: model.attachmentEdge,
-                expansionAnchor: model.expansionAnchor,
-                bodyRect: model.notchBodyFrame(in: panel),
-                contactR: model.scoopContactRadius,
-                onClick: onOpenSettings
-            )
-            .opacity(capReveal)
-            .allowsHitTesting(capReveal > 0.15)
-            .animation(
-                .timingCurve(0.22, 1, 0.36, 1, duration: 0.32),
-                value: model.settingsCapProgress
-            )
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .simultaneousGesture(
             DragGesture(minimumDistance: 3, coordinateSpace: .global)
                 .onChanged { onDragChanged(NSEvent.mouseLocation, $0.translation) }
@@ -485,22 +663,38 @@ struct CapacityDockView: View {
         .accessibilityLabel("Capacity Dock")
     }
 
-    private var revealAlignment: Alignment {
-        if model.isVertical {
-            return model.expansionAnchor.packsFromStart ? .top : .bottom
-        }
-        return model.expansionAnchor.packsFromStart ? .leading : .trailing
+    private var preferredReorderAnimation: Animation {
+        .spring(
+            response: CapacityDockMotion.preferredReorderResponse,
+            dampingFraction: CapacityDockMotion.preferredReorderDamping
+        )
     }
 
-    private var capAlignment: Alignment {
-        if model.isVertical {
-            let vertical: VerticalAlignment = model.expansionAnchor.packsFromStart ? .bottom : .top
-            let horizontal: HorizontalAlignment = model.attachmentEdge == .left ? .leading : .trailing
-            return Alignment(horizontal: horizontal, vertical: vertical)
-        }
-        let horizontal: HorizontalAlignment = model.expansionAnchor.packsFromStart ? .trailing : .leading
-        let vertical: VerticalAlignment = model.attachmentEdge == .top ? .top : .bottom
-        return Alignment(horizontal: horizontal, vertical: vertical)
+    private var hoverEmphasisAnimation: Animation {
+        .spring(
+            response: CapacityDockMotion.hoverEmphasisResponse,
+            dampingFraction: CapacityDockMotion.hoverEmphasisDamping
+        )
+    }
+
+    @ViewBuilder
+    private func positionedRing(_ item: CapacityDockRailItem, frame: CGRect) -> some View {
+        let appear = model.extraAppearOffset(for: item)
+        let peek = model.isEmphasized(item) ? model.itemEmphasisOffset : .zero
+        let visible = model.extraRevealVisible(for: item)
+        railItem(item)
+            .frame(width: frame.width, height: frame.height)
+            .compositingGroup()
+            .scaleEffect(model.extraAppearScale(for: item), anchor: .center)
+            .offset(x: appear.width, y: appear.height)
+            .opacity(model.presentationOpacity(for: item))
+            .animation(model.extraRevealAnimation(for: item), value: visible)
+            .scaleEffect(model.presentationScale(for: item), anchor: .center)
+            .offset(x: peek.width, y: peek.height)
+            .animation(hoverEmphasisAnimation, value: model.emphasizedProvider)
+            .position(x: frame.midX, y: frame.midY)
+            .zIndex(model.isEmphasized(item) ? 2 : (model.isRestingItem(item) ? 1 : 0))
+            .allowsHitTesting(visible)
     }
 
     @ViewBuilder
@@ -514,6 +708,29 @@ struct CapacityDockView: View {
                 gaugeShape: model.preferences.gaugeShape,
                 onClick: { onProviderClick(provider) }
             )
+        }
+    }
+}
+
+private struct CapacityDockBodyClip: Shape {
+    var rail: CapacityDockRailShape
+    var bodyRect: CGRect
+
+    func path(in _: CGRect) -> Path {
+        rail.path(in: bodyRect)
+    }
+}
+
+private struct CapacityDockExpandClip: ViewModifier {
+    var enabled: Bool
+    var rail: CapacityDockRailShape
+    var bodyRect: CGRect
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.clipShape(CapacityDockBodyClip(rail: rail, bodyRect: bodyRect))
+        } else {
+            content
         }
     }
 }
@@ -829,6 +1046,7 @@ private struct CapacityDockProviderRow: View {
                     width: CapacityDockMetrics.ringSize(scale: scale),
                     height: CapacityDockMetrics.ringSize(scale: scale)
                 )
+                .compositingGroup()
 
                 Text(CapacityDockQuotaPresentation.ringPercentLabel(quota: quota))
                     .font(.system(
@@ -909,6 +1127,7 @@ private struct CapacityDockUsageRing: View {
                     .rotationEffect(.degrees(-90))
             }
         }
+        .compositingGroup()
     }
 }
 

@@ -36,6 +36,7 @@ final class CapacityDockController {
     private var dragStartPointerLocation: CGPoint?
     private var suppressProviderClicksUntil: TimeInterval = 0
     private var railMotionGeneration = 0
+    private var extraRevealSettleWork: DispatchWorkItem?
     private var detailMotionGeneration = 0
     private var lastKnownRailTop: CGFloat?
     private var reduceMotion = false
@@ -121,6 +122,7 @@ final class CapacityDockController {
     func stop() {
         expansionWork?.cancel()
         collapseWork?.cancel()
+        extraRevealSettleWork?.cancel()
         detailWork?.cancel()
         detailExitWork?.cancel()
         stopRailMotion()
@@ -322,6 +324,7 @@ final class CapacityDockController {
                     let overDetail = self.detailPanel?.isVisible == true
                         && self.detailPanel?.frame.contains(point) == true
                     guard overRail || overDetail else { return }
+                    if self.pointerInsideRail || self.pointerInsideDetail { return }
                 }
                 self.updateMouseEventPassthrough(at: point)
                 self.syncPointerHover(at: point)
@@ -463,6 +466,23 @@ final class CapacityDockController {
                 providerHoverChanged(provider, hovering: true)
             }
         }
+        updateHighlightedProvider(row: row, insideRail: insideRail)
+    }
+
+    private func updateHighlightedProvider(row: CapacityDockRailItem?, insideRail: Bool) {
+        let next: CapacityDockProvider?
+        if case .provider(let provider) = row, model.extraRevealVisible(for: .provider(provider)) {
+            next = provider
+        } else if insideRail,
+                  let current = model.highlightedProvider,
+                  model.extraRevealVisible(for: .provider(current)) {
+            next = current
+        } else {
+            next = nil
+        }
+        if model.highlightedProvider != next {
+            model.highlightedProvider = next
+        }
     }
 
     private func activeSpaceDidChange() {
@@ -487,11 +507,18 @@ final class CapacityDockController {
 
     private func railItem(at screenPoint: CGPoint) -> CapacityDockRailItem? {
         guard let railPanel else { return nil }
+        let bounds = CGRect(origin: .zero, size: railPanel.frame.size)
         let local = swiftUILocalPoint(screenPoint, in: railPanel.frame)
-        let frames = model.orbFrames(in: CGRect(origin: .zero, size: railPanel.frame.size))
-        guard let index = frames.firstIndex(where: { $0.insetBy(dx: -1, dy: -1).contains(local) }),
-              model.displayedRailItems.indices.contains(index) else { return nil }
-        return model.displayedRailItems[index]
+        if let item = model.pointerTarget(at: local, in: bounds, slop: 1) {
+            return item
+        }
+        if let current = model.highlightedProvider {
+            let item = CapacityDockRailItem.provider(current)
+            if model.pointerTarget(at: local, in: bounds, slop: 6, preferring: item) == item {
+                return item
+            }
+        }
+        return nil
     }
 
     private func railHoverChanged(_ hovering: Bool) {
@@ -684,11 +711,17 @@ final class CapacityDockController {
         expansionWork?.cancel()
         collapseWork?.cancel()
 
-        if provider != model.preferences.preferredProvider {
+        let preferredChanged = provider != model.preferences.preferredProvider
+        let detailWasShowing = detailPanel?.isVisible == true && model.hoveredProvider != nil
+        if preferredChanged {
             CapacityDockPreferences.setPreferredProvider(provider, defaults: defaults)
+            model.preferences = CapacityDockPreferences.load(defaults: defaults)
         }
         layoutRail()
-        showDetail(for: provider)
+        showDetail(
+            for: provider,
+            transaction: preferredChanged && detailWasShowing ? .preferredReorder : nil
+        )
     }
 
     private func connect(_ provider: CapacityDockProvider) {
@@ -722,7 +755,10 @@ final class CapacityDockController {
         }
     }
 
-    private func showDetail(for provider: CapacityDockProvider) {
+    private func showDetail(
+        for provider: CapacityDockProvider,
+        transaction: CapacityDockMotion.Transaction? = nil
+    ) {
         guard model.preferences.isEnabled,
               model.preferences.selectedProviders.contains(provider) else { return }
         let wasShowingDetail = detailPanel?.isVisible == true && model.hoveredProvider != nil
@@ -733,7 +769,10 @@ final class CapacityDockController {
             scale: model.detailScale
         )
         ensureDetailPanel()
-        layoutDetail(for: provider, transaction: wasShowingDetail ? .detailFollow : .detailPresent)
+        layoutDetail(
+            for: provider,
+            transaction: transaction ?? (wasShowingDetail ? .detailFollow : .detailPresent)
+        )
         detailPanel?.orderFrontRegardless()
     }
 
@@ -755,6 +794,20 @@ final class CapacityDockController {
             detailPanel?.orderOut(nil)
             detailPanel?.alphaValue = 1
         }
+    }
+
+    private func scheduleExtraIconRevealSettled(generation: Int) {
+        extraRevealSettleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, generation == self.railMotionGeneration else { return }
+            guard self.model.wantsExpandedRail, !self.model.hidesExtraIcons else { return }
+            self.model.extraIconRevealSettled = true
+        }
+        extraRevealSettleWork = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + model.extraRevealSettleDelay,
+            execute: work
+        )
     }
 
     private func scheduleCollapse() {
@@ -941,38 +994,21 @@ final class CapacityDockController {
             screenFrame: screenFrame,
             visibleFrame: visibleFrame
         )
-        var settledFrame = railPanel.frame
         if dockedEdge == nil {
             model.dockedEdge = nil
-            settledFrame.size = model.bodySize
-            settledFrame = CapacityDockPlacement.clampedDragFrame(
-                settledFrame,
-                screenFrame: screenFrame,
-                visibleFrame: visibleFrame
-            )
+            model.attachmentProgress = 0
         } else if let dockedEdge {
             model.dockedEdge = dockedEdge
             model.attachmentEdge = dockedEdge
+            model.attachmentProgress = 1
             model.expansionAnchor = CapacityDockPlacement.expansionAnchor(
-                railFrame: settledFrame,
+                railFrame: railPanel.frame,
                 visibleFrame: visibleFrame,
                 edge: dockedEdge
             )
         }
-        // Keep direct dragging exactly mouse-anchored. Once the pointer is
-        // released, settle the panel onto physical pixels so a later hover
-        // animation does not begin with a one-pixel correction.
-        settledFrame = CapacityDockMotion.pixelAlignedRailFrame(
-            settledFrame,
-            backingScale: railPanel.screen?.backingScaleFactor ?? 2,
-            dockedEdge: dockedEdge,
-            expansionAnchor: model.expansionAnchor,
-            isVertical: model.isVertical
-        )
-        if railPanel.frame != settledFrame {
-            railPanel.setFrame(settledFrame, display: false)
-        }
-        lastKnownRailTop = settledFrame.maxY
+        layoutRail(preserveCurrentTop: true, animate: false)
+        let settledFrame = railPanel.frame
         let normalizedVertical = CapacityDockPlacement.normalizedTopOffset(
             railFrame: settledFrame,
             visibleFrame: visibleFrame
@@ -1008,6 +1044,23 @@ final class CapacityDockController {
     private func layoutRail(preserveCurrentTop: Bool = true, animate: Bool = true) {
         guard let railPanel, let screen = targetScreen else { return }
         let wantsExpandedPresentation = model.wantsExpandedRail
+        let expanding = wantsExpandedPresentation && !model.isRailPresentationExpanded
+        let collapsing = !wantsExpandedPresentation && model.isRailPresentationExpanded
+        if expanding {
+            extraRevealSettleWork?.cancel()
+            extraRevealSettleWork = nil
+            model.hidesExtraIcons = false
+            model.extraIconRevealSettled = false
+        }
+        if collapsing {
+            extraRevealSettleWork?.cancel()
+            extraRevealSettleWork = nil
+            model.hidesExtraIcons = true
+            model.extraIconRevealSettled = false
+        }
+        if animate, !model.interaction.isDragging, expanding || collapsing {
+            model.isRailMotionActive = true
+        }
         if wantsExpandedPresentation {
             model.isRailPresentationExpanded = true
         }
@@ -1019,6 +1072,16 @@ final class CapacityDockController {
                 edge: dockedEdge
             )
         }
+        let preferredAxisCoordinate: CGFloat? = if preserveCurrentTop,
+                                                    railPanel.frame.width > 0,
+                                                    railPanel.frame.height > 0
+        {
+            model.isVertical
+                ? railPanel.frame.maxY - model.preferredAlongOffset()
+                : railPanel.frame.minX + model.preferredAlongOffset()
+        } else {
+            nil
+        }
         let floatingAnchors: CapacityDockMotion.FloatingRailAnchors? = if preserveCurrentTop,
                                                                           model.dockedEdge == nil,
                                                                           railPanel.frame.width > 0,
@@ -1028,7 +1091,8 @@ final class CapacityDockController {
                 frame: railPanel.frame,
                 preservedTop: lastKnownRailTop,
                 isVertical: model.isVertical,
-                expansionAnchor: model.expansionAnchor
+                expansionAnchor: model.expansionAnchor,
+                preferredAxisCoordinate: preferredAxisCoordinate
             )
         } else {
             nil
@@ -1036,19 +1100,20 @@ final class CapacityDockController {
         let anchoredTop = floatingAnchors?.top
         let anchoredLeading = floatingAnchors?.leading
         let anchoredAxisCoordinate: CGFloat? = if preserveCurrentTop,
-                                                    let dockedEdge = model.dockedEdge,
                                                     railPanel.frame.width > 0,
                                                     railPanel.frame.height > 0
         {
-            if dockedEdge.isVertical {
+            if model.dockedEdge == nil {
+                floatingAnchors?.axisCoordinate
+            } else if let dockedEdge = model.dockedEdge, dockedEdge.isVertical {
                 switch model.expansionAnchor {
-                case .center: railPanel.frame.maxY - model.preferredAlongOffset()
+                case .center: preferredAxisCoordinate
                 case .start: railPanel.frame.maxY
                 case .end: railPanel.frame.minY
                 }
             } else {
                 switch model.expansionAnchor {
-                case .center: railPanel.frame.minX + model.preferredAlongOffset()
+                case .center: preferredAxisCoordinate
                 case .start: railPanel.frame.minX
                 case .end: railPanel.frame.maxX
                 }
@@ -1097,8 +1162,11 @@ final class CapacityDockController {
             animateRail(to: target, transaction: transaction)
         } else {
             stopRailMotion()
+            model.isRailMotionActive = false
             model.isRailPresentationExpanded = wantsExpandedPresentation
             model.railPresentationProgress = wantsExpandedPresentation ? 1 : 0
+            model.hidesExtraIcons = !wantsExpandedPresentation
+            model.extraIconRevealSettled = wantsExpandedPresentation
             model.attachmentProgress = targetAttachment
             railPanel.setFrame(target, display: true)
         }
@@ -1175,6 +1243,7 @@ final class CapacityDockController {
         let duration = CapacityDockMotion.duration(for: transaction, reduceMotion: reduceMotion)
         let revealFrom = model.railPresentationProgress
         let revealTo: CGFloat = model.wantsExpandedRail ? 1 : 0
+        model.isRailMotionActive = true
         let attachmentFrom = model.attachmentProgress
         let attachmentTo: CGFloat = model.dockedEdge == nil ? 0 : 1
         let backingScale = railPanel.screen?.backingScaleFactor ?? 2
@@ -1228,16 +1297,16 @@ final class CapacityDockController {
                 lastAppliedReveal = sample.presentationProgress
                 lastAppliedAttachment = attachment
 
-                // Publish geometry derived from the snapped frame before
-                // resizing the host. SwiftUI and AppKit now see one sample.
+                // Resize the host first so SwiftUI lays out against the
+                // visible frame, then publish the matching reveal sample.
+                if railPanel?.frame != sample.frame {
+                    railPanel?.setFrame(sample.frame, display: false)
+                }
                 if self.model.railPresentationProgress != sample.presentationProgress {
                     self.model.railPresentationProgress = sample.presentationProgress
                 }
                 if self.model.attachmentProgress != attachment {
                     self.model.attachmentProgress = attachment
-                }
-                if railPanel?.frame != sample.frame {
-                    railPanel?.setFrame(sample.frame, display: false)
                 }
                 railPanel?.contentView?.needsDisplay = true
                 railPanel?.alphaValue = alpha
@@ -1252,16 +1321,21 @@ final class CapacityDockController {
                     self.railPanel?.contentView?.needsDisplay = true
                 }
                 self.lastKnownRailTop = target.maxY
+                self.model.isRailMotionActive = false
                 if self.model.wantsExpandedRail {
                     if self.model.railPresentationProgress != 1 {
                         self.model.railPresentationProgress = 1
                     }
                     self.model.isRailPresentationExpanded = true
+                    self.model.hidesExtraIcons = false
+                    self.scheduleExtraIconRevealSettled(generation: generation)
                 } else {
                     if self.model.railPresentationProgress != 0 {
                         self.model.railPresentationProgress = 0
                     }
                     self.model.isRailPresentationExpanded = false
+                    self.model.hidesExtraIcons = true
+                    self.model.extraIconRevealSettled = false
                 }
                 if self.model.attachmentProgress != attachmentTo {
                     self.model.attachmentProgress = attachmentTo

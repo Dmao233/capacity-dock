@@ -51,29 +51,14 @@ struct CapacityDockInteractionStateTests {
         #expect(!state.isExpanded)
     }
 
-    @Test("pin does not keep the rail expanded after the pointer leaves")
-    func pinDoesNotBlockCollapse() {
-        var state = CapacityDockInteractionState()
-
-        state.togglePinned()
-        state.setRailHovered(true)
-        #expect(state.isExpanded)
-
-        state.beginRailExitGrace()
-        state.completeCollapseGrace()
-        #expect(!state.isExpanded)
-        #expect(state.canCollapse)
-        #expect(state.isPinned)
-    }
-
-    @Test("outside click and Escape fully dismiss pinned interaction")
-    func dismissesPinnedState() {
-        var state = CapacityDockInteractionState(isRailHovered: true, isDetailHovered: true, isPinned: true)
+    @Test("outside click and Escape fully dismiss expanded interaction")
+    func dismissesExpandedState() {
+        var state = CapacityDockInteractionState(isRailHovered: true, isDetailHovered: true)
 
         state.dismiss()
         #expect(state == CapacityDockInteractionState())
 
-        state.togglePinned()
+        state.setRailHovered(true)
         let handled = state.handleEscape()
         #expect(handled)
         #expect(state == CapacityDockInteractionState())
@@ -81,20 +66,18 @@ struct CapacityDockInteractionStateTests {
         #expect(!handledAgain)
     }
 
-    @Test("dragging suppresses hover transitions without changing pin state")
+    @Test("dragging suppresses hover transitions")
     func draggingSuppressesHover() {
-        var state = CapacityDockInteractionState(isRailHovered: true, isPinned: true)
+        var state = CapacityDockInteractionState(isRailHovered: true)
 
         state.beginDragging()
         #expect(state.isDragging)
-        #expect(state.isPinned)
         #expect(state.isExpanded)
         #expect(!state.acceptsHoverTransitions)
 
         state.endDragging()
         #expect(!state.isDragging)
         #expect(state.acceptsHoverTransitions)
-        #expect(state.isPinned)
     }
 
     @Test("dragging during collapse grace keeps the current rail geometry stable")

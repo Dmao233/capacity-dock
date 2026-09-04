@@ -7,20 +7,17 @@ struct CapacityDockInteractionState: Equatable, Sendable {
     private(set) var isRailHovered = false
     private(set) var isDetailHovered = false
     private(set) var isSettingsHovered = false
-    private(set) var isPinned = false
     private(set) var isCollapseGraceActive = false
     private(set) var isDragging = false
 
     init(
         isRailHovered: Bool = false,
         isDetailHovered: Bool = false,
-        isSettingsHovered: Bool = false,
-        isPinned: Bool = false
+        isSettingsHovered: Bool = false
     ) {
         self.isRailHovered = isRailHovered
         self.isDetailHovered = isDetailHovered
         self.isSettingsHovered = isSettingsHovered
-        self.isPinned = isPinned
     }
 
     var isExpanded: Bool {
@@ -64,17 +61,13 @@ struct CapacityDockInteractionState: Equatable, Sendable {
         if hovered { isCollapseGraceActive = false }
     }
 
-    mutating func togglePinned() {
-        isPinned.toggle()
-    }
-
     mutating func dismiss() {
         self = CapacityDockInteractionState()
     }
 
     @discardableResult
     mutating func handleEscape() -> Bool {
-        guard isExpanded || isPinned else { return false }
+        guard isExpanded else { return false }
         dismiss()
         return true
     }
