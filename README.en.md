@@ -5,8 +5,8 @@
 <h1 align="center">Capacity Dock</h1>
 
 <p align="center">
-  An organic black notch on the Mac display edge.<br>
-  Glance at Grok, Claude, Copilot, Codex, and other AI quotas; hover for the detail card.
+  Quota rings on the Mac display edge.<br>
+  Glance at real Cursor, Codex, Grok, and other usage; hover for the detail card.
 </p>
 
 <p align="center">
@@ -32,14 +32,26 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/rest.png" width="220" alt="Rest: one preferred ring">
+  <img src="assets/screenshots/rest.png" width="280" alt="Rest: one preferred ring on the right edge">
   &nbsp;
-  <img src="assets/screenshots/hover.png" width="360" alt="Hover: all rings and the detail bubble">
+  <img src="assets/screenshots/rest-close.png" width="280" alt="Rest close-up: ring and percent">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/hover.png" width="520" alt="Hover: detail card and selected rings">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/hover-detail.png" width="360" alt="Detail: progress, plan, reset time">
+  &nbsp;
+  <img src="assets/screenshots/overview.png" width="360" alt="Overview of rings and detail cards">
 </p>
 
 ## What it is
 
 Capacity Dock is a macOS 14+ menu-bar accessory with no Dock icon. It parks real AI quotas on the screen edge: unbound rings show `-`, and the app does not invent usage.
+
+Rest shows only the preferred ring. Hover expands the selected set and opens an inward detail card: progress, reset time, plan. Live sessions appear under `Source:` with the conversation title.
 
 Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). This repository packages that surface as a small, installable app.
 
@@ -108,7 +120,7 @@ swift run
    - **Dock to Edge**: Left / Right / Top / Bottom
    - **Hide Capacity Dock**: remove it from the screen; restore from the status item
 6. Click the external gear, or **Capacity Dock Settings…** in the status menu. The sidebar has General / About / providers, and can check GitHub for a newer release.
-7. Hover a ring: if that provider wrote live work in the last 90 seconds, a green live dot and title appear under `Source:`, at most three rows.
+7. Hover a ring: if that provider is in use, a green live dot and conversation title appear under `Source:`, at most three rows.
 
 Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
 

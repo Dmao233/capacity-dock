@@ -88,10 +88,10 @@ enum CapacityDockLiveActivity {
     }
 }
 
-/// Read-only view of Cursor's local AI-code tracking database. Rows appear
-/// while Composer is writing files; they are not a process list and are never
-/// copied into Capacity Dock storage. Titles prefer Cursor's conversation
-/// name, then the last hashed file.
+/// Read-only view of Cursor's local activity. A row is live when the
+/// conversation was updated in the window, or Composer hashed a file.
+/// Titles prefer Cursor's conversation name. Nothing is copied into
+/// Capacity Dock storage.
 struct CursorLiveEditStore: Sendable {
     let databaseURL: URL
     let conversationSearchURL: URL
@@ -124,8 +124,56 @@ struct CursorLiveEditStore: Sendable {
     }
 
     func tasks(since cutoff: Date) throws -> [CapacityDockActiveTask] {
-        guard FileManager.default.fileExists(atPath: databaseURL.path) else { return [] }
         let cutoffMs = Int64(cutoff.timeIntervalSince1970 * 1000)
+        let hashes = try liveHashes(since: cutoffMs)
+        let chats = liveConversations(since: cutoffMs)
+        if hashes.isEmpty && chats.isEmpty { return [] }
+
+        var ranked: [String: (timestamp: Int64, fileName: String?, searchTitle: String?)] = [:]
+        for hash in hashes {
+            ranked[hash.id] = (hash.timestamp, hash.fileName, nil)
+        }
+        for chat in chats {
+            if var existing = ranked[chat.id] {
+                existing.timestamp = max(existing.timestamp, chat.timestamp)
+                existing.searchTitle = chat.title
+                ranked[chat.id] = existing
+            } else {
+                ranked[chat.id] = (chat.timestamp, nil, chat.title)
+            }
+        }
+
+        let missingTitles = ranked.compactMap { id, row in
+            row.searchTitle == nil ? id : nil
+        }
+        let lookedUpTitles = Self.titles(for: missingTitles, databaseURL: conversationSearchURL)
+        for (id, title) in lookedUpTitles {
+            guard var row = ranked[id] else { continue }
+            row.searchTitle = title
+            ranked[id] = row
+        }
+
+        let ids = ranked.keys.sorted { lhs, rhs in
+            (ranked[lhs]?.timestamp ?? 0) > (ranked[rhs]?.timestamp ?? 0)
+        }
+        let summaryTitles = trackingSummaryTitles(for: ids)
+
+        return ids.compactMap { id in
+            guard let row = ranked[id] else { return nil }
+            let fileTitle = LiveActivityPath.nonEmpty(row.fileName).map {
+                URL(fileURLWithPath: $0).lastPathComponent
+            }
+            guard let title = summaryTitles[id] ?? row.searchTitle ?? fileTitle else { return nil }
+            return CapacityDockActiveTask(id: id, title: title)
+        }
+    }
+
+    static func displayTitle(path: String?) -> String {
+        LiveActivityPath.fileTitle(path)
+    }
+
+    private func liveHashes(since cutoffMs: Int64) throws -> [(id: String, fileName: String?, timestamp: Int64)] {
+        guard FileManager.default.fileExists(atPath: databaseURL.path) else { return [] }
         var database: OpaquePointer?
         let openResult = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
         guard openResult == SQLITE_OK else {
@@ -149,36 +197,78 @@ struct CursorLiveEditStore: Sendable {
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, cutoffMs)
 
-        var rows: [(id: String, fileName: String?)] = []
+        var rows: [(id: String, fileName: String?, timestamp: Int64)] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let conversation = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
                   !conversation.isEmpty else { continue }
             rows.append((
                 id: conversation,
-                fileName: sqlite3_column_text(statement, 1).map { String(cString: $0) }
+                fileName: sqlite3_column_text(statement, 1).map { String(cString: $0) },
+                timestamp: sqlite3_column_int64(statement, 2)
             ))
         }
+        return rows
+    }
 
-        let summaryTitles = Self.titles(
-            for: rows.map(\.id),
+    private func liveConversations(since cutoffMs: Int64) -> [(id: String, title: String?, timestamp: Int64)] {
+        Self.liveConversations(since: cutoffMs, databaseURL: conversationSearchURL)
+    }
+
+    private func trackingSummaryTitles(for ids: [String]) -> [String: String] {
+        guard !ids.isEmpty, FileManager.default.fileExists(atPath: databaseURL.path) else { return [:] }
+        var database: OpaquePointer?
+        let openResult = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard openResult == SQLITE_OK else {
+            sqlite3_close(database)
+            return [:]
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 250)
+        return Self.titles(
+            for: ids,
             database: database,
             sql: "SELECT title FROM conversation_summaries WHERE conversationId = ? LIMIT 1;"
         )
-        let missing = rows.map(\.id).filter { summaryTitles[$0] == nil }
-        let searchTitles = Self.titles(for: missing, databaseURL: conversationSearchURL)
-
-        return rows.map { row in
-            CapacityDockActiveTask(
-                id: row.id,
-                title: summaryTitles[row.id]
-                    ?? searchTitles[row.id]
-                    ?? Self.displayTitle(path: row.fileName)
-            )
-        }
     }
 
-    static func displayTitle(path: String?) -> String {
-        LiveActivityPath.fileTitle(path)
+    private static func liveConversations(
+        since cutoffMs: Int64,
+        databaseURL: URL
+    ) -> [(id: String, title: String?, timestamp: Int64)] {
+        guard FileManager.default.fileExists(atPath: databaseURL.path) else { return [] }
+        var database: OpaquePointer?
+        let openResult = sqlite3_open_v2(databaseURL.path, &database, SQLITE_OPEN_READONLY, nil)
+        guard openResult == SQLITE_OK else {
+            sqlite3_close(database)
+            return []
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 250)
+
+        var statement: OpaquePointer?
+        let sql = """
+        SELECT id, title, updated_at
+        FROM conversations
+        WHERE updated_at >= ?
+        ORDER BY updated_at DESC;
+        """
+        guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, cutoffMs)
+
+        var rows: [(id: String, title: String?, timestamp: Int64)] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let id = sqlite3_column_text(statement, 0).map({ String(cString: $0) }),
+                  !id.isEmpty else { continue }
+            rows.append((
+                id: id,
+                title: LiveActivityPath.nonEmpty(
+                    sqlite3_column_text(statement, 1).map { String(cString: $0) }
+                ),
+                timestamp: sqlite3_column_int64(statement, 2)
+            ))
+        }
+        return rows
     }
 
     private static func titles(

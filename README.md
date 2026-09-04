@@ -5,8 +5,8 @@
 <h1 align="center">Capacity Dock</h1>
 
 <p align="center">
-  macOS 屏幕边缘的有机黑槽用量条。<br>
-  一眼看 Grok、Claude、Copilot、Codex 等 AI 配额，悬停展开详情。
+  贴在屏幕边缘的配额环。<br>
+  一眼看 Cursor、Codex、Grok 等真实用量，悬停打开详情。
 </p>
 
 <p align="center">
@@ -32,14 +32,26 @@
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/rest.png" width="220" alt="待机：一枚首选环">
+  <img src="assets/screenshots/rest.png" width="280" alt="待机：贴在右缘的一枚首选环">
   &nbsp;
-  <img src="assets/screenshots/hover.png" width="360" alt="悬停：全部环和详情气泡">
+  <img src="assets/screenshots/rest-close.png" width="280" alt="待机特写：配额环和百分比">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/hover.png" width="520" alt="悬停：详情气泡和已选环">
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/hover-detail.png" width="360" alt="详情：进度、套餐、重置时间">
+  &nbsp;
+  <img src="assets/screenshots/overview.png" width="360" alt="多服务商环与详情总览">
 </p>
 
 ## 这是什么
 
 Capacity Dock 是 macOS 14+ 的菜单栏附属应用，没有 Dock 图标。它把各家 AI 的真实配额贴在屏幕边缘：没登录就是 `-`，不编造用量。
+
+待机只留当前首选环。悬停展开已选服务商，并向内打开详情：进度、重置时间、套餐。正在用的会话会出现在 `Source:` 下面，标题用会话名。
 
 几何、悬停和详情卡片来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。本仓库做成可安装的独立小工具。
 
@@ -108,7 +120,7 @@ swift run
    - **停靠到边缘**：左 / 右 / 上 / 下
    - **隐藏侧边额度栏**：从屏幕拿掉，用菜单栏入口再打开
 6. 点槽外的设置齿轮，或菜单栏里的「侧边额度栏设置…」。左侧是通用 / 关于 / 服务商列表，也可以检查 GitHub 上的新版本。
-7. 悬停某家环时，若该服务商 90 秒内有活写入，详情里 `Source:` 下面会出现绿圈和标题，最多 3 条。
+7. 悬停某家环时，若该服务商正在用，详情里 `Source:` 下面会出现绿圈和会话标题，最多 3 条。
 
 拖动槽可以换边。贴到边缘会重新长出勺形接触；拉到桌面中间则变成圆角胶囊，设置条改到尾部。
 

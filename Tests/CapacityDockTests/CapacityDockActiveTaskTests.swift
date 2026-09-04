@@ -63,7 +63,11 @@ struct CapacityDockActiveTaskTests {
         try Self.writeConversationSearch(
             at: Self.cursorSearchDB(home),
             rows: [
-                (id: "884772cc-96ba-4147-81e2-ba80aa261d71", title: "Capacity Dock integration setup")
+                (
+                    id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+                    title: "Capacity Dock integration setup",
+                    updatedAt: nil
+                )
             ]
         )
 
@@ -100,7 +104,7 @@ struct CapacityDockActiveTaskTests {
         )
         try Self.writeConversationSearch(
             at: Self.cursorSearchDB(home),
-            rows: [(id: "conv-2", title: "From conversation search")]
+            rows: [(id: "conv-2", title: "From conversation search", updatedAt: nil)]
         )
 
         let tasks = CapacityDockLiveActivity.tasks(
@@ -111,6 +115,61 @@ struct CapacityDockActiveTaskTests {
         #expect(tasks == [
             CapacityDockActiveTask(id: "conv-2", title: "From tracking summary")
         ])
+    }
+
+    @Test("a live Cursor conversation shows without a file hash")
+    func liveCursorConversationShowsWithoutHash() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeConversationSearch(
+            at: Self.cursorSearchDB(home),
+            rows: [
+                (
+                    id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+                    title: "Capacity Dock integration setup",
+                    updatedAt: Int64(now.timeIntervalSince1970 * 1000) - 5_000
+                )
+            ]
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(
+                id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+                title: "Capacity Dock integration setup"
+            )
+        ])
+    }
+
+    @Test("a stale Cursor conversation does not invent a row")
+    func staleCursorConversationIsHidden() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeConversationSearch(
+            at: Self.cursorSearchDB(home),
+            rows: [
+                (
+                    id: "stale-chat",
+                    title: "Old thread",
+                    updatedAt: Int64(now.timeIntervalSince1970 * 1000) - 120_000
+                )
+            ]
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks.isEmpty)
     }
 
     @Test("stale Cursor edits drop off after the live window")
@@ -323,7 +382,7 @@ struct CapacityDockActiveTaskTests {
 
     private static func writeConversationSearch(
         at url: URL,
-        rows: [(id: String, title: String)]
+        rows: [(id: String, title: String, updatedAt: Int64?)]
     ) throws {
         var database: OpaquePointer?
         guard sqlite3_open(url.path, &database) == SQLITE_OK else {
@@ -333,7 +392,7 @@ struct CapacityDockActiveTaskTests {
         defer { sqlite3_close(database) }
         guard sqlite3_exec(
             database,
-            "CREATE TABLE conversations (id TEXT, title TEXT);",
+            "CREATE TABLE conversations (id TEXT, title TEXT, updated_at INTEGER);",
             nil,
             nil,
             nil
@@ -342,7 +401,7 @@ struct CapacityDockActiveTaskTests {
             var statement: OpaquePointer?
             guard sqlite3_prepare_v2(
                 database,
-                "INSERT INTO conversations(id, title) VALUES (?, ?);",
+                "INSERT INTO conversations(id, title, updated_at) VALUES (?, ?, ?);",
                 -1,
                 &statement,
                 nil
@@ -350,6 +409,11 @@ struct CapacityDockActiveTaskTests {
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, row.id, -1, sqliteTransientForActiveTaskTests)
             sqlite3_bind_text(statement, 2, row.title, -1, sqliteTransientForActiveTaskTests)
+            if let updatedAt = row.updatedAt {
+                sqlite3_bind_int64(statement, 3, updatedAt)
+            } else {
+                sqlite3_bind_null(statement, 3)
+            }
             guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
         }
     }
