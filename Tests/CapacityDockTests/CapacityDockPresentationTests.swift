@@ -80,6 +80,14 @@ struct CapacityDockPresentationTests {
         model.interaction.setRailHovered(false)
         #expect(model.displayedProviders == [.claude, .codex, .gemini])
         #expect(model.targetBodyLength == model.expandedBodyLength)
+        #expect(model.panelSize == model.targetPanelSize(forAttachmentProgress: 1))
+        #expect(
+            model.preferredAlongOffset()
+                == model.preferredAlongOffset(
+                    itemCount: model.displayedProviders.count,
+                    progress: 1
+                )
+        )
     }
 
     @MainActor
@@ -106,6 +114,20 @@ struct CapacityDockPresentationTests {
         #expect(cap.minY < body.maxY)
         #expect(cap.midX > body.midX)
         #expect(model.panelSize.height == model.bodyLength + CapacityDockMetrics.settingsCapSlot(scale: model.scale))
+
+        model.dockedEdge = .right
+        model.attachmentProgress = 1
+        let dockedBounds = CGRect(origin: .zero, size: model.panelSize)
+        let dockedBody = model.notchBodyFrame(in: dockedBounds)
+        let dockedFrames = model.orbFrames(in: dockedBounds)
+        let path = model.railShape.path(in: dockedBody)
+        let inset: CGFloat = 3
+        for frame in dockedFrames {
+            #expect(path.contains(CGPoint(x: frame.minX + inset, y: frame.minY + inset)))
+            #expect(path.contains(CGPoint(x: frame.minX + inset, y: frame.maxY - inset)))
+            #expect(frame.maxY <= dockedBody.maxY - model.scoopContactRadius + 0.5)
+            #expect(frame.minY >= dockedBody.minY + model.scoopContactRadius - 0.5)
+        }
     }
 
     @MainActor

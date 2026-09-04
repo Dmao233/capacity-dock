@@ -76,7 +76,11 @@ enum CapacityDockMetrics {
             + alongPad
     }
 
-    static func detailHeight(quota: QuotaSummary?, scale: CGFloat) -> CGFloat {
+    static func detailHeight(
+        quota: QuotaSummary?,
+        activeTaskCount: Int = 0,
+        scale: CGFloat
+    ) -> CGFloat {
         guard let quota else { return 186 * scale }
         let rows = min(max(quota.details.count, quota.primary == nil ? 0 : 1), 5)
         let visibleFooter = CapacityDockQuotaPresentation.visibleFooterLines(
@@ -91,9 +95,11 @@ enum CapacityDockMetrics {
         case .loading, .stale, .transientFailure: 16
         case .connected: 0
         }
+        let taskCount = min(max(activeTaskCount, 0), CapacityDockActiveTaskSnapshot.maxTasks)
+        let taskExtra: CGFloat = taskCount == 0 ? 0 : 10 + CGFloat(taskCount) * 18
         let base = min(
             470,
-            max(132, 88 + CGFloat(rows) * 62 + CGFloat(footer) + actionExtra + connectionExtra)
+            max(132, 88 + CGFloat(rows) * 62 + CGFloat(footer) + actionExtra + connectionExtra + taskExtra)
         )
         return base * scale
     }
@@ -106,6 +112,7 @@ final class CapacityDockViewModel {
     var interaction = CapacityDockInteractionState()
     var hoveredProvider: CapacityDockProvider?
     var highlightedProvider: CapacityDockProvider?
+    var activeTasks: [CapacityDockActiveTask] = []
     var detailHeight: CGFloat = 164
     var isRailPresentationExpanded = false
     var railPresentationProgress: CGFloat = 0
@@ -434,7 +441,16 @@ final class CapacityDockViewModel {
         let eased = p * p * (3 - 2 * p)
         return CapacityDockMetrics.edgeShoulderDepth(scale: scale) * 0.6 * eased
     }
-    var railAlongPad: CGFloat { CapacityDockMetrics.railAlongPad(scale: scale) + flareCompensation }
+    /// Keep first/last rings out of the scooped corners and the nested
+    /// settings orb. Derived from flare depth (not live contactR) so it
+    /// cannot recurse through restLength.
+    var railAlongPad: CGFloat {
+        let base = CapacityDockMetrics.railAlongPad(scale: scale) + flareCompensation
+        guard flareCompensation > 1 else { return base }
+        let orb = CapacityDockMetrics.settingsCapOrbSize(scale: scale)
+        let nest = min(max(flareCompensation * 0.33, orb * 0.25), orb * 0.4)
+        return max(base, nest + orb)
+    }
     var railCrossPad: CGFloat { CapacityDockMetrics.railCrossPad(scale: scale) }
     var detailWidth: CGFloat { CapacityDockMetrics.detailWidth(scale: detailScale) }
 
@@ -1292,6 +1308,18 @@ struct CapacityDockDetailView: View {
                             .foregroundStyle(Color.capacityDockText.opacity(0.58))
                     }
                 }
+                let liveTasks = Array(model.activeTasks.prefix(CapacityDockActiveTaskSnapshot.maxTasks))
+                if !liveTasks.isEmpty {
+                    VStack(alignment: .leading, spacing: 6 * model.detailScale) {
+                        ForEach(liveTasks) { task in
+                            CapacityDockActiveTaskRow(
+                                task: task,
+                                scale: model.detailScale
+                            )
+                        }
+                    }
+                    .padding(.top, 2 * model.detailScale)
+                }
             } else {
                 Text(ProviderConnectionGuidance.dockInstruction(for: provider))
                     .font(.system(size: 12))
@@ -1353,6 +1381,61 @@ struct CapacityDockDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+private struct CapacityDockActiveTaskRow: View {
+    let task: CapacityDockActiveTask
+    let scale: CGFloat
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 7 * scale) {
+            CapacityDockLiveDot(size: 8 * scale)
+            Text(task.title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.capacityDockText.opacity(0.88))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(task.title)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            String(format: NSLocalizedString("Active, %@", comment: ""), task.title)
+        )
+    }
+}
+
+private struct CapacityDockLiveDot: View {
+    let size: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var spinning = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.green.opacity(0.22))
+            if reduceMotion {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: size * 0.42, height: size * 0.42)
+            } else {
+                Circle()
+                    .trim(from: 0.12, to: 0.78)
+                    .stroke(
+                        Color.green,
+                        style: StrokeStyle(lineWidth: max(1.25, size * 0.18), lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(spinning ? 360 : 0))
+                    .animation(
+                        .linear(duration: 0.85).repeatForever(autoreverses: false),
+                        value: spinning
+                    )
+            }
+        }
+        .frame(width: size, height: size)
+        .compositingGroup()
+        .onAppear { spinning = !reduceMotion }
+        .accessibilityHidden(true)
     }
 }
 

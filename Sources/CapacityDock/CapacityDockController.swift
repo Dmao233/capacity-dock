@@ -46,6 +46,8 @@ final class CapacityDockController {
     private var detailIsDismissing = false
     private var isPresentingRailMenu = false
     private var railMenuProxies: [CapacityDockRailMenuProxy] = []
+    private var activeTaskTimer: Timer?
+    private var activeTaskGeneration = 0
 
     init(store: CapacityDockStore, defaults: UserDefaults = .standard) {
         self.store = store
@@ -125,6 +127,7 @@ final class CapacityDockController {
         extraRevealSettleWork?.cancel()
         detailWork?.cancel()
         detailExitWork?.cancel()
+        stopActiveTaskMonitoring()
         stopRailMotion()
         stopDetailMotion()
 
@@ -168,10 +171,7 @@ final class CapacityDockController {
     func refreshQuotaPresentation() {
         guard model.preferences.isEnabled else { return }
         if let provider = model.hoveredProvider {
-            model.detailHeight = CapacityDockMetrics.detailHeight(
-                quota: store.capacityDockQuotaSummary(for: provider),
-                scale: model.detailScale
-            )
+            applyDetailHeight(for: provider)
             layoutDetail(for: provider, transaction: .immediate)
         }
     }
@@ -197,10 +197,7 @@ final class CapacityDockController {
            !snapshot.selectedProviders.contains(hovered) {
             hideDetail(animated: false)
         } else if let hovered = model.hoveredProvider {
-            model.detailHeight = CapacityDockMetrics.detailHeight(
-                quota: store.capacityDockQuotaSummary(for: hovered),
-                scale: model.detailScale
-            )
+            applyDetailHeight(for: hovered)
         }
 
         guard snapshot.isEnabled else {
@@ -531,6 +528,7 @@ final class CapacityDockController {
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.pointerInsideRail else { return }
                 self.model.interaction.setRailHovered(true)
+                guard !self.model.preferences.keepExpanded else { return }
                 self.layoutRail()
             }
             expansionWork = work
@@ -589,7 +587,7 @@ final class CapacityDockController {
         collapseWork?.cancel()
         detailExitWork?.cancel()
         model.interaction.setDetailHovered(hovering)
-        if hovering, model.interaction.isExpanded {
+        if hovering, model.interaction.isExpanded, !model.preferences.keepExpanded {
             // Re-entering during a scheduled or in-flight collapse must restore
             // the expanded host frame as well as reversing the card fade.
             layoutRail()
@@ -724,6 +722,52 @@ final class CapacityDockController {
         )
     }
 
+    private func applyDetailHeight(for provider: CapacityDockProvider) {
+        model.detailHeight = CapacityDockMetrics.detailHeight(
+            quota: store.capacityDockQuotaSummary(for: provider),
+            activeTaskCount: model.activeTasks.count,
+            scale: model.detailScale
+        )
+    }
+
+    private func startActiveTaskMonitoring() {
+        stopActiveTaskMonitoring()
+        refreshActiveTasks()
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshActiveTasks()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        activeTaskTimer = timer
+    }
+
+    private func stopActiveTaskMonitoring() {
+        activeTaskTimer?.invalidate()
+        activeTaskTimer = nil
+        activeTaskGeneration += 1
+        model.activeTasks = []
+    }
+
+    private func refreshActiveTasks() {
+        guard let provider = model.hoveredProvider else { return }
+        activeTaskGeneration += 1
+        let generation = activeTaskGeneration
+        Task.detached { [weak self] in
+            let tasks = CapacityDockActiveTaskSnapshot.tasks(for: provider)
+            await MainActor.run {
+                guard let self, generation == self.activeTaskGeneration else { return }
+                guard self.model.hoveredProvider == provider else { return }
+                let changed = self.model.activeTasks != tasks
+                self.model.activeTasks = tasks
+                if changed {
+                    self.applyDetailHeight(for: provider)
+                    self.layoutDetail(for: provider, transaction: .immediate)
+                }
+            }
+        }
+    }
+
     private func connect(_ provider: CapacityDockProvider) {
         Task { [weak self] in
             guard let self else { return }
@@ -764,10 +808,8 @@ final class CapacityDockController {
         let wasShowingDetail = detailPanel?.isVisible == true && model.hoveredProvider != nil
         detailIsDismissing = false
         model.hoveredProvider = provider
-        model.detailHeight = CapacityDockMetrics.detailHeight(
-            quota: store.capacityDockQuotaSummary(for: provider),
-            scale: model.detailScale
-        )
+        applyDetailHeight(for: provider)
+        startActiveTaskMonitoring()
         ensureDetailPanel()
         layoutDetail(
             for: provider,
@@ -777,6 +819,7 @@ final class CapacityDockController {
     }
 
     private func hideDetail(animated: Bool = true) {
+        stopActiveTaskMonitoring()
         let provider = model.hoveredProvider
         model.interaction.setDetailHovered(false)
         guard let provider, detailPanel?.isVisible == true else {
@@ -817,6 +860,7 @@ final class CapacityDockController {
             self.model.interaction.completeCollapseGrace()
             guard self.model.interaction.canCollapse else { return }
             self.hideDetail()
+            guard !self.model.preferences.keepExpanded else { return }
             self.layoutRail()
         }
         collapseWork = work
@@ -834,6 +878,7 @@ final class CapacityDockController {
         guard !insideRail, !insideDetail else { return }
         model.interaction.dismiss()
         hideDetail()
+        guard !model.preferences.keepExpanded else { return }
         layoutRail()
     }
 
@@ -1149,6 +1194,28 @@ final class CapacityDockController {
             isVertical: model.isVertical
         )
         lastKnownRailTop = target.maxY
+        let current = CapacityDockMotion.pixelAlignedRailFrame(
+            railPanel.frame,
+            backingScale: screen.backingScaleFactor,
+            dockedEdge: model.dockedEdge,
+            expansionAnchor: model.expansionAnchor,
+            isVertical: model.isVertical
+        )
+        if CapacityDockMotion.framesMatch(current, target) {
+            model.isRailMotionActive = false
+            model.isRailPresentationExpanded = wantsExpandedPresentation
+            model.railPresentationProgress = wantsExpandedPresentation ? 1 : 0
+            model.hidesExtraIcons = !wantsExpandedPresentation
+            model.extraIconRevealSettled = wantsExpandedPresentation
+            model.attachmentProgress = targetAttachment
+            if model.preferences.isEnabled { railPanel.orderFrontRegardless() }
+            updateMouseEventPassthrough()
+            if !detailIsDismissing, let provider = model.hoveredProvider {
+                layoutDetail(for: provider)
+            }
+            syncPointerHover()
+            return
+        }
         let transaction = CapacityDockMotion.railTransaction(
             fromFrame: railPanel.frame,
             toFrame: target,

@@ -34,6 +34,8 @@ struct CapacityDockProvider: RawRepresentable, CaseIterable, Identifiable, Hasha
     static let grok = CapacityDockProvider(known: "grok")
     static let cursor = CapacityDockProvider(known: "cursor")
     static let antigravity = CapacityDockProvider(known: "antigravity")
+    static let clinepass = CapacityDockProvider(known: "clinepass")
+    static let zai = CapacityDockProvider(known: "zai")
 
     var catalogEntry: ProviderConnectionCatalogEntry {
         ProviderConnectionCatalog.providers.first { $0.id == rawValue }!
@@ -49,6 +51,8 @@ struct CapacityDockProvider: RawRepresentable, CaseIterable, Identifiable, Hasha
         case Self.grok.rawValue: .grok
         case Self.cursor.rawValue: .cursor
         case Self.antigravity.rawValue: .antigravity
+        case Self.clinepass.rawValue: .clinepass
+        case Self.zai.rawValue: .zai
         default: nil
         }
     }
@@ -439,4 +443,5 @@ extension Notification.Name {
     static let capacityDockOpenProviderSettings = Notification.Name("com.dmao233.capacityDockOpenProviderSettings")
     static let capacityDockCheckForUpdates = Notification.Name("com.dmao233.capacityDockCheckForUpdates")
     static let capacityDockQuotaDidChange = Notification.Name("com.dmao233.capacityDockQuotaDidChange")
+    static let capacityDockCredentialPresenceDidChange = Notification.Name("com.dmao233.capacityDockCredentialPresenceDidChange")
 }

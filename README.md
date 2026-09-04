@@ -43,11 +43,13 @@ Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）�
 
 - **待机**只显示当前首选服务商的一枚环
 - **悬停**沿下方弧度展开已选服务商，并打开向内的详情气泡
+- **进行中**任务出现在详情气泡 `Source:` 下面：绿圈 + 标题，最多 3 条；90 秒内没有活写入就整段隐藏
 - **常驻展开**让待机就显示全部环，详情仍随鼠标关掉
 - 停靠在左 / 右 / 上 / 下，或拖成独立胶囊
 - 设置齿轮活在槽外：贴着底部勺形弧的短弧，悬停胀成齿轮
+- 设置窗是系统设置那种左侧边栏：通用 / 关于 / 服务商列表
 
-本仓库把这套表面做成可独立编译、可安装的小工具。几何、悬停和详情卡片源码来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。开箱环上是 `-`，不是假用量；把真实数字写进 `quota.json`。
+本仓库把这套表面做成可独立编译、可安装的小工具。几何、悬停和详情卡片源码来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。开箱环上是 `-`，不是假用量；没登录保持 Not connected。可选 `quota.json` 仍可覆盖。
 
 ## 功能
 
@@ -55,7 +57,8 @@ Capacity Dock 是一个 macOS 14+ 的菜单栏附属应用（无 Dock 图标）�
 | --- | --- |
 | 有机黑槽 | 顶部勺形锁定，高度变化时上沿不动 |
 | 配额环 | 周额度优先；未绑定显示单个 `-` |
-| 详情气泡 | 进度、重置倒计时、套餐、Connect / Reconnect |
+| 详情气泡 | 进度、重置倒计时、套餐、Connect / Reconnect、进行中任务 |
+| 本机适配器 | Codex、Claude、ClinePass、Cursor、Gemini、Antigravity、Copilot、Z.ai、Kimi Code、Grok |
 | SuperGrok Heavy | 计划名收成 `Heavy` |
 | 右键菜单 | 常驻展开、停靠边缘、隐藏 |
 | 跨桌面 | 跟随所有 Space，不钉死在第一次出现的桌面 |
@@ -92,7 +95,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.0
+Scripts/package-app.sh 0.4.0
 open .build/dist/CapacityDock.app
 ```
 
@@ -112,20 +115,27 @@ swift run
    - **常驻展开**：待机就显示全部已选环，详情仍随鼠标关
    - **停靠到边缘**：左 / 右 / 上 / 下
    - **隐藏侧边额度栏**：从屏幕拿掉，用菜单栏入口再打开
-6. 点槽外的设置齿轮，或菜单栏里的「侧边额度栏设置…」。设置里可以检查 GitHub 上的新版本。
+6. 点槽外的设置齿轮，或菜单栏里的「侧边额度栏设置…」。左侧是通用 / 关于 / 服务商列表，也可以检查 GitHub 上的新版本。
+7. 悬停某家环时，若该服务商 90 秒内有活写入，详情里 `Source:` 下面会出现绿圈和标题，最多 3 条。
 
 拖动槽可以换边。贴到边缘会重新长出勺形接触；拉到桌面中间则变成圆角胶囊，设置条改到尾部。
 
 ## 配额数据
 
-Codex、Claude、Grok、Cursor 会读本机已经登录的 CLI / 应用，不把 token 再存一份。
+多数服务商读本机已经登录的 CLI / 应用，不把来源凭证再存一份。ClinePass 和 Z.ai 用设置页保存的 API 密钥。
 
 | 服务商 | 怎么连上 |
 | --- | --- |
 | Codex | 本机有 `~/.codex/auth.json`（`codex login`）就会自动拉 |
-| Grok | 本机有 `~/.grok/auth.json`（`grok login`）就会自动拉 |
-| Cursor | 已登录 Cursor.app，读它的本地 session |
 | Claude | 有 `~/.claude/.credentials.json` 会自动拉；只有钥匙串时，第一次点详情里的 Connect |
+| Cursor | 已登录 Cursor.app，读本地 session，走 `api2.cursor.sh` |
+| Grok | 本机有 `~/.grok/auth.json`（`grok login`）就会自动拉 |
+| Gemini | 读 `~/.gemini/oauth_creds.json` |
+| Copilot | 读本机 Copilot / `gh` / 环境变量里的 GitHub token |
+| Antigravity | 探活本机 language server / `agy` |
+| Kimi Code | 读 `~/.kimi-code/credentials/kimi-code.json` |
+| ClinePass | 设置页粘贴 API 密钥后「保存并连接」 |
+| Z.ai | 设置页 API 密钥，或本机 Pi 登录 |
 
 未登录显示 `-`。也可以手写覆盖文件：
 
@@ -148,9 +158,7 @@ Codex、Claude、Grok、Cursor 会读本机已经登录的 CLI / 应用，不把
 }
 ```
 
-`percent` 是 0…1。保存后在设置里点「重新加载 quota.json」，或重启应用。
-
-Copilot 等其余服务商仍可用 `quota.json` 填数。本仓库不伪造用量。
+`percent` 是 0…1。保存后在设置里点「重新加载 quota.json」，或重启应用。本仓库不伪造用量。
 
 ## 开发
 

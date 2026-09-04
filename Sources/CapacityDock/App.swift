@@ -114,10 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let hosting = NSHostingController(
             rootView: CapacityDockSettingsView(store: store)
-                .frame(minWidth: 420, minHeight: 520)
         )
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 580),
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false

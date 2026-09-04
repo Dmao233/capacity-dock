@@ -120,6 +120,75 @@ enum LiveQuotaPresentation {
         )
     }
 
+    static func gemini(_ usage: GeminiUsage) -> QuotaSummary {
+        windows(
+            provider: .gemini,
+            details: usage.details.map {
+                .init(label: $0.label, percent: $0.usedPercent / 100, resetsAt: $0.resetsAt)
+            },
+            planLabel: usage.plan,
+            footer: ["Source: Gemini CLI"]
+        )
+    }
+
+    static func copilot(_ usage: CopilotUsage) -> QuotaSummary {
+        windows(
+            provider: .copilot,
+            details: usage.details.map {
+                .init(label: $0.label, percent: $0.usedPercent / 100, resetsAt: $0.resetsAt)
+            },
+            planLabel: usage.plan,
+            footer: ["Source: GitHub Copilot"]
+        )
+    }
+
+    static func antigravity(_ usage: AntigravityUsage) -> QuotaSummary {
+        windows(
+            provider: .antigravity,
+            details: usage.details.map {
+                .init(label: $0.label, percent: $0.usedPercent / 100, resetsAt: $0.resetsAt)
+            },
+            planLabel: usage.plan,
+            footer: ["Source: Antigravity app"]
+        )
+    }
+
+    static func kimi(_ usage: KimiUsage) -> QuotaSummary {
+        var details: [QuotaSummary.Window] = []
+        if let primary = usage.primary {
+            details.append(.init(
+                label: primary.label,
+                percent: primary.usedPercent / 100,
+                resetsAt: primary.resetsAt
+            ))
+        }
+        details.append(contentsOf: usage.details.map {
+            .init(label: $0.label, percent: $0.usedPercent / 100, resetsAt: $0.resetsAt)
+        })
+        return windows(
+            provider: .kimiCode,
+            details: details,
+            planLabel: usage.plan,
+            footer: ["Source: Kimi CLI"]
+        )
+    }
+
+    private static func windows(
+        provider: ProviderFilter,
+        details: [QuotaSummary.Window],
+        planLabel: String?,
+        footer: [String]
+    ) -> QuotaSummary {
+        QuotaSummary(
+            providerFilter: provider,
+            connection: .connected,
+            primary: details.first,
+            details: details,
+            planLabel: planLabel,
+            footerLines: footer
+        )
+    }
+
     static func disconnected(_ provider: CapacityDockProvider, reason: String? = nil) -> QuotaSummary {
         QuotaSummary(
             providerFilter: provider.legacyFilter ?? .all,

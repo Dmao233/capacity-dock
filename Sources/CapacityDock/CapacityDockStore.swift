@@ -7,12 +7,19 @@ protocol CapacityDockQuotaReading: AnyObject {
     func capacityDockQuotaSummary(for provider: CapacityDockProvider) -> QuotaSummary?
     func capacityDockCredential(for provider: CapacityDockProvider) async -> CapacityDockProviderCredential
     func connectCapacityDockProvider(_ provider: CapacityDockProvider) async
+    func saveCapacityDockCredential(_ credential: CapacityDockProviderCredential, for provider: CapacityDockProvider) async throws
+    func disconnectCapacityDockProvider(_ provider: CapacityDockProvider) async throws
 }
 
 @MainActor
 @Observable
 final class CapacityDockStore: CapacityDockQuotaReading {
-    static let liveProviderIDs: Set<String> = ["claude", "codex", "grok", "cursor"]
+    static let liveProviderIDs: Set<String> = [
+        "claude", "codex", "grok", "cursor",
+        "gemini", "copilot", "antigravity", "kimi",
+        "clinepass", "zai"
+    ]
+    var settingsTab: String = "general"
 
     private(set) var summaries: [String: QuotaSummary]
     private(set) var loading: Set<String> = []
@@ -65,27 +72,58 @@ final class CapacityDockStore: CapacityDockQuotaReading {
     }
 
     func capacityDockQuotaSummary(for provider: CapacityDockProvider) -> QuotaSummary? {
-        summaries[provider.id]
+        if let summary = summaries[provider.id] {
+            if loading.contains(provider.id) {
+                return QuotaSummary(
+                    providerFilter: summary.providerFilter,
+                    connection: .stale,
+                    primary: summary.primary,
+                    details: summary.details,
+                    planLabel: summary.planLabel,
+                    footerLines: summary.footerLines
+                )
+            }
+            return summary
+        }
+        if loading.contains(provider.id) {
+            return QuotaSummary(
+                providerFilter: provider.legacyFilter ?? .all,
+                connection: .loading,
+                primary: nil,
+                details: [],
+                planLabel: nil,
+                footerLines: []
+            )
+        }
+        return nil
     }
 
     func capacityDockCredential(for provider: CapacityDockProvider) async -> CapacityDockProviderCredential {
-        CapacityDockProviderCredential()
+        (try? await CapacityDockProviderCredentialStore.loadAsync(for: provider.id))
+            ?? CapacityDockProviderCredential()
+    }
+
+    func saveCapacityDockCredential(
+        _ credential: CapacityDockProviderCredential,
+        for provider: CapacityDockProvider
+    ) async throws {
+        try await CapacityDockProviderCredentialStore.saveAsync(credential, for: provider.id)
+    }
+
+    func disconnectCapacityDockProvider(_ provider: CapacityDockProvider) async throws {
+        try await CapacityDockProviderCredentialStore.removeAsync(for: provider.id)
+        summaries[provider.id] = nil
+        notifyQuotaChanged()
     }
 
     func connectCapacityDockProvider(_ provider: CapacityDockProvider) async {
-        guard Self.liveProviderIDs.contains(provider.id) else {
-            NotificationCenter.default.post(
-                name: .capacityDockOpenProviderSettings,
-                object: provider.id
-            )
-            return
-        }
+        guard Self.liveProviderIDs.contains(provider.id) else { return }
         await refresh(provider, userInitiated: true)
     }
 
     func refreshLiveProviders(userInitiated: Bool) async {
         let generation = refreshGeneration
-        for id in ["grok", "claude", "codex", "cursor"] {
+        for id in Self.liveProviderIDs.sorted() {
             guard let provider = CapacityDockProvider(rawValue: id) else { continue }
             await refresh(provider, userInitiated: userInitiated)
             guard generation == refreshGeneration else { return }
@@ -126,6 +164,28 @@ final class CapacityDockStore: CapacityDockQuotaReading {
                 summaries[provider.id] = try await refreshCodex(userInitiated: userInitiated)
             case "claude":
                 summaries[provider.id] = try await refreshClaude(userInitiated: userInitiated)
+            case "gemini":
+                summaries[provider.id] = LiveQuotaPresentation.gemini(
+                    try await GeminiSubscriptionService.refresh()
+                )
+            case "copilot":
+                summaries[provider.id] = LiveQuotaPresentation.copilot(
+                    try await CopilotSubscriptionService.refresh()
+                )
+            case "antigravity":
+                summaries[provider.id] = LiveQuotaPresentation.antigravity(
+                    try await AntigravitySubscriptionService.refresh()
+                )
+            case "kimi":
+                summaries[provider.id] = LiveQuotaPresentation.kimi(
+                    try await KimiSubscriptionService.refresh()
+                )
+            case "clinepass":
+                let key = (try? CapacityDockProviderCredentialStore.load(for: provider.id))?.apiKey ?? ""
+                summaries[provider.id] = try await ClinePassSubscriptionService.refresh(apiKey: key)
+            case "zai":
+                let key = (try? CapacityDockProviderCredentialStore.load(for: provider.id))?.sanitizedOverride.apiKey
+                summaries[provider.id] = try await ZaiSubscriptionService.refresh(apiKey: key)
             default:
                 return
             }
@@ -217,6 +277,72 @@ final class CapacityDockStore: CapacityDockQuotaReading {
                 provider,
                 message: error.localizedDescription,
                 terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        if let error = error as? GeminiSubscriptionService.FetchError {
+            if case .noCredentials = error {
+                return LiveQuotaPresentation.disconnected(.gemini, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        if let error = error as? CopilotSubscriptionService.FetchError {
+            if case .noCredentials = error {
+                return LiveQuotaPresentation.disconnected(.copilot, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        if let error = error as? AntigravitySubscriptionService.FetchError {
+            if case .disconnected = error {
+                return LiveQuotaPresentation.disconnected(.antigravity, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: false,
+                previous: previous
+            )
+        }
+        if let error = error as? KimiSubscriptionService.FetchError {
+            if case .noCredentials = error {
+                return LiveQuotaPresentation.disconnected(.kimiCode, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        if let error = error as? ClinePassSubscriptionService.FetchError {
+            if error == .noCredentials {
+                return LiveQuotaPresentation.disconnected(.clinepass, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.isTerminal,
+                previous: previous
+            )
+        }
+        if let error = error as? ZaiSubscriptionService.FetchError {
+            if error == .noCredentials {
+                return LiveQuotaPresentation.disconnected(.zai, reason: error.localizedDescription)
+            }
+            return LiveQuotaPresentation.failure(
+                provider,
+                message: error.localizedDescription,
+                terminal: error.classification == .terminalAuth,
                 previous: previous
             )
         }

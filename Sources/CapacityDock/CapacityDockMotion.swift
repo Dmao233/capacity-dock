@@ -125,6 +125,17 @@ enum CapacityDockMotion {
         return .immediate
     }
 
+    static func framesMatch(
+        _ a: CGRect,
+        _ b: CGRect,
+        epsilon: CGFloat = heightEpsilon
+    ) -> Bool {
+        abs(a.minX - b.minX) < epsilon
+            && abs(a.minY - b.minY) < epsilon
+            && abs(a.width - b.width) < epsilon
+            && abs(a.height - b.height) < epsilon
+    }
+
     /// Bubble starts slightly toward the rail so it emerges from the dock.
     static func detailPresentationStartFrame(
         from target: CGRect,

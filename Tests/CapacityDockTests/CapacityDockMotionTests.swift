@@ -85,6 +85,14 @@ struct CapacityDockMotionTests {
             attachmentFrom: 1,
             attachmentTo: 1
         ) == .railCollapse)
+        #expect(CapacityDockMotion.framesMatch(
+            CGRect(x: 10, y: 20, width: 88, height: 200),
+            CGRect(x: 10.2, y: 20.1, width: 88.2, height: 200.2)
+        ))
+        #expect(!CapacityDockMotion.framesMatch(
+            CGRect(x: 10, y: 20, width: 88, height: 200),
+            CGRect(x: 10, y: 21, width: 88, height: 200)
+        ))
     }
 
     @Test("bubble presentation slides out from the rail and dismisses back toward it")

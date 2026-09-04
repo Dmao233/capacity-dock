@@ -11,6 +11,8 @@ enum ProviderFilter: String, CaseIterable, Identifiable, Sendable {
     case kimi = "Kimi"
     case kimiCode = "Kimi Code"
     case antigravity = "Antigravity"
+    case clinepass = "ClinePass"
+    case zai = "Z.ai"
 
     var id: String { rawValue }
 }

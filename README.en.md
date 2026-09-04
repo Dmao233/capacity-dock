@@ -43,11 +43,13 @@ Capacity Dock is a macOS 14+ menu-bar accessory (no Dock icon). It parks provide
 
 - **Rest** shows only the preferred provider ring
 - **Hover** expands the selected set along the bottom scoop and opens an inward detail bubble
+- **Active tasks** appear under `Source:` on the detail card: a green live dot plus a title, at most three rows; the block hides after 90 seconds with no live writes
 - **Keep Expanded** leaves every selected ring visible at rest; the detail card still follows the pointer
 - Dock to left / right / top / bottom, or drag it into a floating pill
 - Settings live outside the blob: a short arc that follows the scoop, inflating into a gear on hover
+- Settings use a system-settings sidebar: General / About / provider list
 
-This repository packages that surface as a small, buildable app. Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). Rings show `-` until you supply real numbers in `quota.json` — no placeholder usage.
+This repository packages that surface as a small, buildable app. Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). Rings show `-` until a local login or `quota.json` supplies real numbers — no invented usage.
 
 ## Features
 
@@ -55,7 +57,8 @@ This repository packages that surface as a small, buildable app. Rail geometry, 
 | --- | --- |
 | Organic notch | Top scoop stays locked while height changes |
 | Quota rings | Weekly window first; unbound usage is a single `-` |
-| Detail bubble | Progress, reset countdown, plan, Connect / Reconnect |
+| Detail bubble | Progress, reset countdown, plan, Connect / Reconnect, active tasks |
+| Live adapters | Codex, Claude, ClinePass, Cursor, Gemini, Antigravity, Copilot, Z.ai, Kimi Code, Grok |
 | SuperGrok Heavy | Plan label compact to `Heavy` |
 | Right-click menu | Keep Expanded, Dock to Edge, Hide |
 | Spaces | Joins every desktop; not pinned to the Space where it first appeared |
@@ -92,7 +95,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.0
+Scripts/package-app.sh 0.4.0
 open .build/dist/CapacityDock.app
 ```
 
@@ -112,20 +115,27 @@ swift run
    - **Keep Expanded**: rest shows every selected ring; the card still closes on leave
    - **Dock to Edge**: Left / Right / Top / Bottom
    - **Hide Capacity Dock**: remove it from the screen; restore from the status item
-6. Click the external gear, or **Capacity Dock Settings…** in the status menu. Settings can check GitHub for a newer release.
+6. Click the external gear, or **Capacity Dock Settings…** in the status menu. The sidebar has General / About / providers, and can check GitHub for a newer release.
+7. Hover a ring: if that provider wrote live work in the last 90 seconds, a green live dot and title appear under `Source:`, at most three rows.
 
 Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
 
 ## Quota data
 
-Codex, Claude, Grok, and Cursor are read from the login already on this Mac. Tokens are not copied into Capacity Dock’s Keychain.
+Most providers are read from the login already on this Mac. Source credentials are not copied into Capacity Dock’s Keychain. ClinePass and Z.ai use an API key saved from Settings.
 
 | Provider | How it connects |
 | --- | --- |
 | Codex | Auto if `~/.codex/auth.json` exists (`codex login`) |
-| Grok | Auto if `~/.grok/auth.json` exists (`grok login`) |
-| Cursor | Reads the signed-in Cursor.app session |
 | Claude | Auto if `~/.claude/.credentials.json` exists; Keychain-only logins need Connect once |
+| Cursor | Reads the signed-in Cursor.app session via `api2.cursor.sh` |
+| Grok | Auto if `~/.grok/auth.json` exists (`grok login`) |
+| Gemini | Reads `~/.gemini/oauth_creds.json` |
+| Copilot | Reads a GitHub token already on this Mac (Copilot / `gh` / env) |
+| Antigravity | Probes a running language server / `agy` |
+| Kimi Code | Reads `~/.kimi-code/credentials/kimi-code.json` |
+| ClinePass | Paste an API key in Settings, then Save & Connect |
+| Z.ai | Settings API key, or an existing Pi login |
 
 Unbound rings show `-`. You can still overlay:
 
@@ -148,9 +158,7 @@ See [`docs/quota.example.json`](docs/quota.example.json):
 }
 ```
 
-`percent` is 0…1. After saving, click **Reload quota.json** in Settings, or relaunch.
-
-Other catalog providers can still be filled via `quota.json`. This app does not invent usage.
+`percent` is 0…1. After saving, click **Reload quota.json** in Settings, or relaunch. This app does not invent usage.
 
 ## Develop
 

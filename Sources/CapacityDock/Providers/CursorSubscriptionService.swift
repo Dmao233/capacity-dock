@@ -1,11 +1,15 @@
 import Foundation
 import SQLite3
 
-/// CodeBurn-owned Cursor quota adapter. It reads Cursor.app's existing local
-/// session database in read-only mode, keeps the token in memory for one
-/// request, and never copies it into CodeBurn's Keychain or support directory.
+/// Reads Cursor.app's local session database in read-only mode, keeps the
+/// token in memory for one request, and never copies it into Capacity Dock's
+/// Keychain or support directory.
+///
+/// Quota is fetched from Cursor's agent API (`api2.cursor.sh`). The dashboard
+/// host `cursor.com` is a different network path and is often blocked or hung
+/// behind local HTTP proxies even while the Cursor app itself still works.
 enum CursorSubscriptionService {
-    static let usageURL = URL(string: "https://cursor.com/api/usage-summary")!
+    static let usageURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage")!
     private static let timeoutSeconds: TimeInterval = 15
 
     enum FetchError: Error, Equatable, LocalizedError, Sendable {
@@ -59,11 +63,25 @@ enum CursorSubscriptionService {
 
     struct Deps: Sendable {
         var loadAccessToken: @Sendable () throws -> String?
+        var loadMembershipType: @Sendable () throws -> String?
         var fetch: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
+
+        init(
+            loadAccessToken: @escaping @Sendable () throws -> String?,
+            loadMembershipType: @escaping @Sendable () throws -> String? = { nil },
+            fetch: @escaping @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
+        ) {
+            self.loadAccessToken = loadAccessToken
+            self.loadMembershipType = loadMembershipType
+            self.fetch = fetch
+        }
 
         static let live = Deps(
             loadAccessToken: {
                 try CursorAppSessionStore().loadAccessToken()
+            },
+            loadMembershipType: {
+                try CursorAppSessionStore().loadMembershipType()
             },
             fetch: { request in
                 let configuration = URLSessionConfiguration.ephemeral
@@ -71,6 +89,8 @@ enum CursorSubscriptionService {
                 configuration.httpShouldSetCookies = false
                 configuration.urlCache = nil
                 configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+                configuration.timeoutIntervalForRequest = timeoutSeconds
+                configuration.timeoutIntervalForResource = timeoutSeconds
                 let session = URLSession(configuration: configuration)
                 defer { session.invalidateAndCancel() }
                 let (data, response) = try await session.data(for: request)
@@ -83,29 +103,41 @@ enum CursorSubscriptionService {
     @MainActor
     static func refresh(deps: Deps = .live) async throws -> QuotaSummary {
         let accessToken: String
+        let membershipType: String?
         do {
             // The store read is synchronous SQLite with a 250ms busy timeout;
             // keep it off the main actor so a lock held by Cursor cannot
             // stall the UI.
             let loadAccessToken = deps.loadAccessToken
-            let raw = try await Task.detached { try loadAccessToken() }.value
-            guard let loaded = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !loaded.isEmpty else {
+            let loadMembershipType = deps.loadMembershipType
+            let loaded = try await Task.detached {
+                let token = try loadAccessToken()
+                let membership = try? loadMembershipType()
+                return (token, membership)
+            }.value
+            guard let raw = loaded.0?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !raw.isEmpty else {
                 throw FetchError.noCredentials
             }
-            accessToken = loaded
+            accessToken = raw
+            membershipType = loaded.1?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
         } catch let error as FetchError {
             throw error
         } catch {
             throw FetchError.appDataUnreadable
         }
 
-        let session = try session(from: accessToken)
+        try requireFreshAccessToken(accessToken)
         var request = URLRequest(url: usageURL)
-        request.httpMethod = "GET"
+        request.httpMethod = "POST"
         request.timeoutInterval = timeoutSeconds
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(session.cookieHeader, forHTTPHeaderField: "Cookie")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = Data("{}".utf8)
 
         let data: Data
         let response: HTTPURLResponse
@@ -130,10 +162,10 @@ enum CursorSubscriptionService {
             throw FetchError.parseFailure
         }
 
-        return try decode(data)
+        return try decode(data, membershipType: membershipType)
     }
 
-    static func decode(_ data: Data) throws -> QuotaSummary {
+    static func decode(_ data: Data, membershipType: String? = nil) throws -> QuotaSummary {
         let summary: UsageSummary
         do {
             summary = try JSONDecoder().decode(UsageSummary.self, from: data)
@@ -141,7 +173,7 @@ enum CursorSubscriptionService {
             throw FetchError.parseFailure
         }
 
-        let plan = summary.individualUsage?.plan
+        let plan = summary.planUsage?.asMeter ?? summary.individualUsage?.plan
         let overall = summary.individualUsage?.overall
         let pooled = summary.teamUsage?.pooled
         let autoPercent = normalizedProviderPercent(plan?.autoPercentUsed)
@@ -175,8 +207,12 @@ enum CursorSubscriptionService {
            onDemand.enabled != false,
            let percent = ratio(used: onDemand.used, limit: onDemand.limit) {
             details.append(QuotaSummary.Window(label: "On-demand", percent: percent, resetsAt: reset))
+        } else if let spend = summary.spendLimitUsage,
+                  let percent = ratio(used: spend.totalSpend, limit: spend.individualLimit) {
+            details.append(QuotaSummary.Window(label: "On-demand", percent: percent, resetsAt: reset))
         }
-        if let percent = ratio(used: pooled?.used, limit: pooled?.limit) {
+        if let percent = ratio(used: pooled?.used, limit: pooled?.limit)
+            ?? ratio(used: summary.spendLimitUsage?.pooledUsed, limit: summary.spendLimitUsage?.pooledLimit) {
             details.append(QuotaSummary.Window(label: "Team pool", percent: percent, resetsAt: reset))
         }
 
@@ -185,37 +221,24 @@ enum CursorSubscriptionService {
             connection: .connected,
             primary: primary,
             details: details,
-            planLabel: planLabel(summary.membershipType),
+            planLabel: planLabel(summary.membershipType ?? membershipType),
             footerLines: ["Source: Cursor app"]
         )
     }
 
-    private struct Session {
-        let cookieHeader: String
-    }
-
     private struct Claims: Decodable {
-        let sub: String?
         let exp: Double?
     }
 
-    private static func session(from token: String, now: Date = Date()) throws -> Session {
+    private static func requireFreshAccessToken(_ token: String, now: Date = Date()) throws {
         let components = token.split(separator: ".", omittingEmptySubsequences: false)
         guard components.count == 3,
               let payload = decodeBase64URL(String(components[1])),
               let claims = try? JSONDecoder().decode(Claims.self, from: payload),
-              let subject = claims.sub,
-              let userID = subject.split(separator: "|", omittingEmptySubsequences: true).last.map(String.init),
-              !userID.isEmpty,
               let expiration = claims.exp,
               Date(timeIntervalSince1970: expiration).timeIntervalSince(now) > 60 else {
             throw FetchError.expiredSession
         }
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-        guard userID.unicodeScalars.allSatisfy(allowed.contains) else {
-            throw FetchError.expiredSession
-        }
-        return Session(cookieHeader: "WorkosCursorSessionToken=\(userID)%3A%3A\(token)")
     }
 
     private static func decodeBase64URL(_ value: String) -> Data? {
@@ -237,7 +260,11 @@ enum CursorSubscriptionService {
     }
 
     private static func parseDate(_ raw: String?) -> Date? {
-        guard let raw else { return nil }
+        guard let raw, !raw.isEmpty else { return nil }
+        if raw.allSatisfy(\.isNumber), let value = Double(raw) {
+            let seconds = value > 10_000_000_000 ? value / 1000 : value
+            return Date(timeIntervalSince1970: seconds)
+        }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = formatter.date(from: raw) { return date }
@@ -264,8 +291,59 @@ enum CursorSubscriptionService {
         let billingCycleEnd: String?
         let membershipType: String?
         let isUnlimited: Bool?
+        let planUsage: PlanUsage?
+        let spendLimitUsage: SpendLimitUsage?
         let individualUsage: IndividualUsage?
         let teamUsage: TeamUsage?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            billingCycleEnd = try container.decodeFlexibleStringIfPresent(forKey: .billingCycleEnd)
+            membershipType = try container.decodeIfPresent(String.self, forKey: .membershipType)
+            isUnlimited = try container.decodeIfPresent(Bool.self, forKey: .isUnlimited)
+            planUsage = try container.decodeIfPresent(PlanUsage.self, forKey: .planUsage)
+            spendLimitUsage = try container.decodeIfPresent(SpendLimitUsage.self, forKey: .spendLimitUsage)
+            individualUsage = try container.decodeIfPresent(IndividualUsage.self, forKey: .individualUsage)
+            teamUsage = try container.decodeIfPresent(TeamUsage.self, forKey: .teamUsage)
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case billingCycleEnd
+            case membershipType
+            case isUnlimited
+            case planUsage
+            case spendLimitUsage
+            case individualUsage
+            case teamUsage
+        }
+    }
+
+    private struct PlanUsage: Decodable {
+        let totalSpend: Int?
+        let includedSpend: Int?
+        let remaining: Int?
+        let limit: Int?
+        let autoPercentUsed: Double?
+        let apiPercentUsed: Double?
+        let totalPercentUsed: Double?
+
+        var asMeter: Meter {
+            Meter(
+                enabled: true,
+                used: includedSpend ?? totalSpend,
+                limit: limit,
+                autoPercentUsed: autoPercentUsed,
+                apiPercentUsed: apiPercentUsed,
+                totalPercentUsed: totalPercentUsed
+            )
+        }
+    }
+
+    private struct SpendLimitUsage: Decodable {
+        let totalSpend: Int?
+        let individualLimit: Int?
+        let pooledUsed: Int?
+        let pooledLimit: Int?
     }
 
     private struct IndividualUsage: Decodable {
@@ -291,6 +369,7 @@ enum CursorSubscriptionService {
 /// Narrow read-only adapter for Cursor's own VS Code state database.
 struct CursorAppSessionStore: Sendable {
     private static let accessTokenKey = "cursorAuth/accessToken"
+    private static let membershipTypeKey = "cursorAuth/stripeMembershipType"
     let databaseURL: URL
 
     init(databaseURL: URL = Self.defaultDatabaseURL()) {
@@ -304,12 +383,20 @@ struct CursorAppSessionStore: Sendable {
     }
 
     func loadAccessToken() throws -> String? {
+        try loadString(for: Self.accessTokenKey)
+    }
+
+    func loadMembershipType() throws -> String? {
+        try loadString(for: Self.membershipTypeKey)
+    }
+
+    private func loadString(for key: String) throws -> String? {
         guard FileManager.default.fileExists(atPath: databaseURL.path) else { return nil }
         do {
-            return try value(for: Self.accessTokenKey, immutable: false)
+            return try value(for: key, immutable: false)
         } catch let error as SQLiteFailure
             where error.code == SQLITE_CANTOPEN && walSidecarsAreMissing {
-            return try value(for: Self.accessTokenKey, immutable: true)
+            return try value(for: key, immutable: true)
         } catch {
             throw CursorAppSessionStoreError.unreadable
         }
@@ -376,3 +463,25 @@ private enum CursorAppSessionStoreError: Error {
 }
 
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeFlexibleStringIfPresent(forKey key: Key) throws -> String? {
+        guard contains(key) else { return nil }
+        if let value = try? decodeIfPresent(String.self, forKey: key) {
+            return value
+        }
+        if let value = try? decodeIfPresent(Int64.self, forKey: key) {
+            return String(value)
+        }
+        if let value = try? decodeIfPresent(Double.self, forKey: key) {
+            return String(Int64(value))
+        }
+        return nil
+    }
+}

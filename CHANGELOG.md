@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- 设置改成系统设置那种左侧边栏：通用 / 关于 / 已适配服务商
+- 本机适配器扩到 10 家：Codex、Claude、ClinePass、Cursor、Gemini、Antigravity、Copilot、Z.ai、Kimi Code、Grok
+- Cursor 额度改走 `api2.cursor.sh`，不再打会超时的 `cursor.com/api/usage-summary`
+- 详情气泡在 `Source:` 下面显示进行中任务：绿圈 + 标题，最多 3 条；90 秒内没有活写入就整段隐藏
+
 ## 0.3.0
 
 - 展开围着首选环上下一起长，收起时环留在原地
