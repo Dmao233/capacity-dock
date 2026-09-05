@@ -47,7 +47,7 @@
 
 Capacity Dock is a macOS 14+ menu-bar accessory with no Dock icon. It parks real AI quotas on the screen edge: unbound rings show `-`, and the app does not invent usage.
 
-Rest shows only the preferred ring. Hover expands the selected set and opens an inward detail card: progress, reset time, plan. Live sessions appear under `Source:` with the conversation title.
+Rest shows only the preferred ring. Hover expands the selected set and opens an inward detail card: progress, reset time, plan. Live sessions appear under `Source:` as a workspace label plus the conversation title. Left-click the menu-bar `◉` for the local token bill; right-click opens Settings.
 
 Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). This repository packages that surface as a small, installable app.
 
@@ -57,10 +57,10 @@ Rail geometry, hover, and the detail card come from [CodeBurn](https://github.co
 | --- | --- |
 | Edge notch | Dock to left / right / top / bottom, or drag it into a floating pill |
 | Quota rings | Rest shows the preferred ring; hover expands the selected set and the detail card |
-| Detail | Progress, reset time, plan, connect; live rows use the conversation title |
+| Detail | Progress, reset time, plan, connect; live rows show the workspace and conversation title |
 | Local logins | Reads Codex, Claude, Cursor, Gemini, Antigravity, Copilot, Kimi Code, and Grok from this Mac; ClinePass and Z.ai can also take a key in Settings |
-| Settings | Sidebar for General / About / providers, plus a GitHub update check |
-| Menu-bar extra | Hide the rail and restore it from `◉`; it never takes a Dock slot |
+| Settings | Sidebar for General / Usage / About / providers, plus a GitHub update check |
+| Menu-bar extra | Left-click `◉` for the bill, right-click for Settings; hide the rail and restore it from here; no Dock slot |
 | Spaces | Follows every desktop; not pinned to the Space where it first appeared |
 | Chinese + English | Simplified Chinese when that is the system language |
 
@@ -95,7 +95,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.1.0
+Scripts/package-app.sh 0.2.0
 open .build/dist/CapacityDock.app
 ```
 
@@ -115,8 +115,8 @@ swift run
    - **Keep Expanded**: rest shows every selected ring; the card still closes on leave
    - **Dock to Edge**: Left / Right / Top / Bottom
    - **Hide Capacity Dock**: remove it from the screen; restore from the status item
-6. Click the external gear, or **Capacity Dock Settings…** in the status menu. The sidebar has General / About / providers, and can check GitHub for a newer release.
-7. Hover a ring: if that provider is in use, a green live dot and conversation title appear under `Source:`, at most three rows.
+6. Click the external gear, or right-click the menu-bar `◉` for Settings. The sidebar has General / Usage / About / providers, and can check GitHub for a newer release. Left-click `◉` to open the local token bill under the icon.
+7. Hover a ring: if that provider is in use, a green live dot, workspace label, and conversation title appear under `Source:`, at most three rows.
 
 Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
 

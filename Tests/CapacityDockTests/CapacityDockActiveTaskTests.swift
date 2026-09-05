@@ -34,6 +34,12 @@ struct CapacityDockActiveTaskTests {
                 )
             ]
         )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "conv-1",
+            name: nil,
+            generating: true
+        )
 
         let tasks = CapacityDockLiveActivity.tasks(
             providerID: "cursor",
@@ -69,6 +75,12 @@ struct CapacityDockActiveTaskTests {
                     updatedAt: nil
                 )
             ]
+        )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+            name: nil,
+            generating: true
         )
 
         let tasks = CapacityDockLiveActivity.tasks(
@@ -106,6 +118,12 @@ struct CapacityDockActiveTaskTests {
             at: Self.cursorSearchDB(home),
             rows: [(id: "conv-2", title: "From conversation search", updatedAt: nil)]
         )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "conv-2",
+            name: nil,
+            generating: true
+        )
 
         let tasks = CapacityDockLiveActivity.tasks(
             providerID: "cursor",
@@ -133,6 +151,12 @@ struct CapacityDockActiveTaskTests {
                 )
             ]
         )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+            name: "Capacity Dock integration setup",
+            generating: true
+        )
 
         let tasks = CapacityDockLiveActivity.tasks(
             providerID: "cursor",
@@ -145,6 +169,213 @@ struct CapacityDockActiveTaskTests {
                 title: "Capacity Dock integration setup"
             )
         ])
+    }
+
+    @Test("an unfinished Cursor parent shows while thinking")
+    func unfinishedCursorParentShowsWhileThinking() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        let nowMs = Int64(now.timeIntervalSince1970 * 1000)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeComposerHeaders(
+            at: Self.cursorStateDB(home),
+            rows: [
+                """
+                {"type":"head","composerId":"89a50863-94d2-43e1-88cf-9d4c1ab93d6e","name":"第五批前逐行闭合","unfinishedRunAt":1700000000000,"conversationCheckpointLastUpdatedAt":\(nowMs),"unifiedMode":"agent","workspaceIdentifier":{"uri":{"fsPath":"/Users/lu/Desktop/纵横/项目/独立开发/vue_procurement_management_system"}}}
+                """
+            ]
+        )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e",
+            name: "第五批前逐行闭合",
+            generating: false
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(
+                id: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e",
+                title: "第五批前逐行闭合",
+                workspace: "vue_procurement_management_system"
+            )
+        ])
+    }
+
+    @Test("a parent leftover unfinishedRunAt with a stale checkpoint does not spin")
+    func unfinishedCursorParentWithStaleCheckpointIsHidden() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeComposerHeaders(
+            at: Self.cursorStateDB(home),
+            rows: [
+                """
+                {"type":"head","composerId":"89a50863-94d2-43e1-88cf-9d4c1ab93d6e","name":"第五批前逐行闭合","unfinishedRunAt":1700000000000,"conversationCheckpointLastUpdatedAt":1699999970000}
+                """
+            ]
+        )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e",
+            name: "第五批前逐行闭合",
+            generating: false
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks.isEmpty)
+    }
+
+    @Test("a finished Cursor conversation does not keep spinning")
+    func finishedCursorConversationDoesNotSpin() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeConversationSearch(
+            at: Self.cursorSearchDB(home),
+            rows: [
+                (
+                    id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+                    title: "Capacity Dock integration setup",
+                    updatedAt: Int64(now.timeIntervalSince1970 * 1000) - 1_000
+                )
+            ]
+        )
+        try Self.writeComposerHeaders(
+            at: Self.cursorStateDB(home),
+            rows: [
+                """
+                {"type":"head","composerId":"884772cc-96ba-4147-81e2-ba80aa261d71","name":"Capacity Dock integration setup","unfinishedRunAt":1700000090000}
+                """
+            ]
+        )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "884772cc-96ba-4147-81e2-ba80aa261d71",
+            name: "Capacity Dock integration setup",
+            generating: false
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks.isEmpty)
+    }
+
+    @Test("an unfinished Cursor subagent stays live after the parent chat goes stale")
+    func unfinishedCursorSubagentShowsWithoutParentUpdate() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeConversationSearch(
+            at: Self.cursorSearchDB(home),
+            rows: [
+                (
+                    id: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e",
+                    title: "August fourth batch purchase orders",
+                    updatedAt: Int64(now.timeIntervalSince1970 * 1000) - 600_000
+                )
+            ]
+        )
+        try Self.writeComposerHeaders(
+            at: Self.cursorStateDB(home),
+            rows: [
+                """
+                {"type":"head","composerId":"61a92507-f2fb-4298-913d-43aa5e0af62a","name":"8月第四批PO actual","unfinishedRunAt":1700000090000,"subagentInfo":{"parentComposerId":"89a50863-94d2-43e1-88cf-9d4c1ab93d6e","rootParentConversationId":"89a50863-94d2-43e1-88cf-9d4c1ab93d6e","subagentTypeName":"generalPurpose"}}
+                """
+            ]
+        )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "61a92507-f2fb-4298-913d-43aa5e0af62a",
+            name: "8月第四批PO actual",
+            generating: true,
+            parentID: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e"
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(
+                id: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e",
+                title: "8月第四批PO actual"
+            )
+        ])
+    }
+
+    @Test("an unfinished Cursor subagent shows even between tool calls")
+    func unfinishedCursorSubagentShowsWithoutLoadingHeader() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeComposerHeaders(
+            at: Self.cursorStateDB(home),
+            rows: [
+                """
+                {"type":"head","composerId":"fa8406d8-503a-4891-b54a-f68def5b56d6","name":"AUG03第三批入库actual","unfinishedRunAt":1700000090000,"subagentInfo":{"parentComposerId":"89a50863-94d2-43e1-88cf-9d4c1ab93d6e","rootParentConversationId":"89a50863-94d2-43e1-88cf-9d4c1ab93d6e"}}
+                """
+            ]
+        )
+        try Self.writeComposerData(
+            at: Self.cursorStateDB(home),
+            id: "fa8406d8-503a-4891-b54a-f68def5b56d6",
+            name: "AUG03第三批入库actual",
+            generating: false,
+            parentID: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e"
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(
+                id: "89a50863-94d2-43e1-88cf-9d4c1ab93d6e",
+                title: "AUG03第三批入库actual"
+            )
+        ])
+    }
+
+    @Test("a finished Cursor composer header does not invent a row")
+    func finishedCursorComposerIsHidden() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        try Self.writeTrackingDatabase(at: Self.cursorDB(home), rows: [])
+        try Self.writeComposerHeaders(
+            at: Self.cursorStateDB(home),
+            rows: [
+                """
+                {"type":"head","composerId":"done-1","name":"Already finished","lastUpdatedAt":1700000000000}
+                """
+            ]
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "cursor",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks.isEmpty)
     }
 
     @Test("a stale Cursor conversation does not invent a row")
@@ -219,7 +450,7 @@ struct CapacityDockActiveTaskTests {
             home: home
         )
         #expect(tasks == [
-            CapacityDockActiveTask(id: "01abc", title: "Fix dock animation")
+            CapacityDockActiveTask(id: "01abc", title: "Fix dock animation", workspace: "project")
         ])
     }
 
@@ -242,6 +473,42 @@ struct CapacityDockActiveTaskTests {
         )
         #expect(tasks == [
             CapacityDockActiveTask(id: "rollout-live.jsonl", title: "纵横数据")
+        ])
+    }
+
+    @Test("Codex joins workspace and sidebar thread name")
+    func codexJoinsWorkspaceAndThreadName() throws {
+        let home = try Self.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let now = Date(timeIntervalSince1970: 1_700_000_090)
+        let day = home.appendingPathComponent(".codex/sessions/2026/08/21", isDirectory: true)
+        try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
+        let id = "01a0242e-e9e1-7840-ad94-53d5219975aa"
+        let file = day.appendingPathComponent(
+            "rollout-2026-08-21T19-57-29-\(id).jsonl"
+        )
+        let line = #"{"type":"session_meta","payload":{"cwd":"/Users/lu/Desktop/纵横/纵横数据"}}"# + "\n"
+        try Data(line.utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: file.path)
+        try Self.writeCodexThreads(
+            at: home.appendingPathComponent(".codex/state_5.sqlite"),
+            rows: [
+                (id: id, name: "ChatGPT Work｜采购订单扫描", path: file.path),
+                (id: "other", name: "ignored", path: "/tmp/other.jsonl")
+            ]
+        )
+
+        let tasks = CapacityDockLiveActivity.tasks(
+            providerID: "codex",
+            since: now.addingTimeInterval(-90),
+            home: home
+        )
+        #expect(tasks == [
+            CapacityDockActiveTask(
+                id: file.lastPathComponent,
+                title: "ChatGPT Work｜采购订单扫描",
+                workspace: "纵横数据"
+            )
         ])
     }
 
@@ -339,8 +606,15 @@ struct CapacityDockActiveTaskTests {
         )
         let idle = CapacityDockMetrics.detailHeight(quota: quota, activeTaskCount: 0, scale: 1)
         let live = CapacityDockMetrics.detailHeight(quota: quota, activeTaskCount: 2, scale: 1)
+        let labeled = CapacityDockMetrics.detailHeight(
+            quota: quota,
+            activeTaskCount: 2,
+            activeTaskWorkspaceCount: 2,
+            scale: 1
+        )
         #expect(live > idle)
         #expect(live == idle + 10 + 36)
+        #expect(labeled == live + 24)
     }
 
     @Test("file titles keep the last path component")
@@ -349,6 +623,32 @@ struct CapacityDockActiveTaskTests {
         #expect(LiveActivityPath.fileTitle("  ") == "Agent")
         #expect(LiveActivityPath.fileTitle(nil) == "Agent")
         #expect(LiveActivityPath.workspaceTitle("/Users/lu/Desktop/纵横数据") == "纵横数据")
+        #expect(
+            LiveActivityPath.displayWorkspace(
+                "/Users/lu/Desktop/纵横/项目/独立开发/vue_procurement_management_system"
+            ) == "vue_procurement_management_system"
+        )
+        #expect(LiveActivityPath.displayWorkspace(NSHomeDirectory()) == nil)
+        #expect(
+            LiveActivityPath.composerWorkspace([
+                "workspaceIdentifier": [
+                    "uri": ["fsPath": "/Users/lu/Documents/Grok/capacity-dock"]
+                ]
+            ]) == "capacity-dock"
+        )
+        #expect(
+            LiveActivityPath.hierarchicalTitle(
+                workspace: "纵横数据",
+                thread: "ChatGPT Work｜采购订单扫描"
+            ) == "纵横数据-ChatGPT Work｜采购订单扫描"
+        )
+        #expect(LiveActivityPath.hierarchicalTitle(workspace: "纵横数据", thread: nil) == "纵横数据")
+        #expect(LiveActivityPath.hierarchicalTitle(workspace: "纵横数据", thread: "纵横数据") == "纵横数据")
+        #expect(
+            CodexLiveSessionStore.sessionID(
+                fromRollout: "rollout-2026-08-21T19-57-29-01a0242e-e9e1-7840-ad94-53d5219975aa.jsonl"
+            ) == "01a0242e-e9e1-7840-ad94-53d5219975aa"
+        )
         #expect(LiveActivityPath.isIgnoredProcessName("Electron Helper"))
         #expect(LiveActivityPath.isIgnoredProcessName("crashpad_handler"))
         #expect(!LiveActivityPath.isIgnoredProcessName("updates.jsonl"))
@@ -378,6 +678,113 @@ struct CapacityDockActiveTaskTests {
         )
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("conversation-search.db")
+    }
+
+    private static func cursorStateDB(_ home: URL) throws -> URL {
+        let dir = home.appendingPathComponent(
+            "Library/Application Support/Cursor/User/globalStorage",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("state.vscdb")
+    }
+
+    private static func writeComposerHeaders(at url: URL, rows: [String]) throws {
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK else {
+            sqlite3_close(database)
+            throw TrackingFixtureError.open
+        }
+        defer { sqlite3_close(database) }
+        guard sqlite3_exec(
+            database,
+            "CREATE TABLE IF NOT EXISTS composerHeaders (composerId TEXT, value TEXT);",
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else { throw TrackingFixtureError.create }
+        for value in rows {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                database,
+                "INSERT INTO composerHeaders(composerId, value) VALUES (?, ?);",
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK else { throw TrackingFixtureError.prepare }
+            defer { sqlite3_finalize(statement) }
+            guard let object = try? JSONSerialization.jsonObject(
+                with: Data(value.utf8)
+            ) as? [String: Any],
+                let id = object["composerId"] as? String
+            else { throw TrackingFixtureError.insert }
+            sqlite3_bind_text(statement, 1, id, -1, sqliteTransientForActiveTaskTests)
+            sqlite3_bind_text(statement, 2, value, -1, sqliteTransientForActiveTaskTests)
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
+        }
+    }
+
+    private static func writeComposerData(
+        at url: URL,
+        id: String,
+        name: String?,
+        generating: Bool,
+        parentID: String? = nil
+    ) throws {
+        var object: [String: Any] = [
+            "composerId": id,
+            "status": generating ? "generating" : "completed",
+            "generatingBubbleIds": generating ? ["bubble-live"] : [],
+            "fullConversationHeadersOnly": [
+                [
+                    "type": 2,
+                    "grouping": [
+                        "toolFormerStatus": generating ? "loading" : "completed",
+                        "shellStatus": generating ? "running" : "success"
+                    ]
+                ]
+            ]
+        ]
+        if let name {
+            object["name"] = name
+        }
+        if let parentID {
+            object["subagentInfo"] = [
+                "parentComposerId": parentID,
+                "rootParentConversationId": parentID
+            ]
+        }
+        let payload = try JSONSerialization.data(withJSONObject: object)
+        guard let value = String(data: payload, encoding: .utf8) else {
+            throw TrackingFixtureError.insert
+        }
+
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK else {
+            sqlite3_close(database)
+            throw TrackingFixtureError.open
+        }
+        defer { sqlite3_close(database) }
+        guard sqlite3_exec(
+            database,
+            "CREATE TABLE IF NOT EXISTS cursorDiskKV (key TEXT PRIMARY KEY, value TEXT);",
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else { throw TrackingFixtureError.create }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database,
+            "INSERT OR REPLACE INTO cursorDiskKV(key, value) VALUES (?, ?);",
+            -1,
+            &statement,
+            nil
+        ) == SQLITE_OK else { throw TrackingFixtureError.prepare }
+        defer { sqlite3_finalize(statement) }
+        let key = "composerData:\(id)"
+        sqlite3_bind_text(statement, 1, key, -1, sqliteTransientForActiveTaskTests)
+        sqlite3_bind_text(statement, 2, value, -1, sqliteTransientForActiveTaskTests)
+        guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
     }
 
     private static func writeConversationSearch(
@@ -414,6 +821,44 @@ struct CapacityDockActiveTaskTests {
             } else {
                 sqlite3_bind_null(statement, 3)
             }
+            guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
+        }
+    }
+
+    private static func writeCodexThreads(
+        at url: URL,
+        rows: [(id: String, name: String, path: String)]
+    ) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK else {
+            sqlite3_close(database)
+            throw TrackingFixtureError.open
+        }
+        defer { sqlite3_close(database) }
+        guard sqlite3_exec(
+            database,
+            "CREATE TABLE threads (id TEXT, rollout_path TEXT, name TEXT);",
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK else { throw TrackingFixtureError.create }
+        for row in rows {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(
+                database,
+                "INSERT INTO threads(id, rollout_path, name) VALUES (?, ?, ?);",
+                -1,
+                &statement,
+                nil
+            ) == SQLITE_OK else { throw TrackingFixtureError.prepare }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, row.id, -1, sqliteTransientForActiveTaskTests)
+            sqlite3_bind_text(statement, 2, row.path, -1, sqliteTransientForActiveTaskTests)
+            sqlite3_bind_text(statement, 3, row.name, -1, sqliteTransientForActiveTaskTests)
             guard sqlite3_step(statement) == SQLITE_DONE else { throw TrackingFixtureError.insert }
         }
     }

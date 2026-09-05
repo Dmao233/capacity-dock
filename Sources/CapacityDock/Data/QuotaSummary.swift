@@ -66,6 +66,20 @@ struct QuotaSummary: Equatable {
         case danger     // >=90%  red
     }
 
+    /// Settings and selection treat this as "still hooked up".
+    /// Refresh-in-flight (`.stale`) and a transient fetch error keep last-known
+    /// windows; that is not a logout. Empty `.transientFailure` is not a session.
+    var isEstablishedSession: Bool {
+        switch connection {
+        case .connected, .stale:
+            return true
+        case .transientFailure:
+            return primary != nil || !details.isEmpty
+        case .loading, .disconnected, .terminalFailure:
+            return false
+        }
+    }
+
     /// The glance value (percent + color) for Capacity Dock. Every provider is
     /// put on the same billing horizon: the weekly window if one exists, else the
     /// monthly window. Only when a provider exposes neither does it fall back to

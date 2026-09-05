@@ -726,6 +726,7 @@ final class CapacityDockController {
         model.detailHeight = CapacityDockMetrics.detailHeight(
             quota: store.capacityDockQuotaSummary(for: provider),
             activeTaskCount: model.activeTasks.count,
+            activeTaskWorkspaceCount: model.activeTasks.filter { $0.workspace != nil }.count,
             scale: model.detailScale
         )
     }

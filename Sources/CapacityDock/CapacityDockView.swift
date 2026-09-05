@@ -79,6 +79,7 @@ enum CapacityDockMetrics {
     static func detailHeight(
         quota: QuotaSummary?,
         activeTaskCount: Int = 0,
+        activeTaskWorkspaceCount: Int = 0,
         scale: CGFloat
     ) -> CGFloat {
         guard let quota else { return 186 * scale }
@@ -96,7 +97,8 @@ enum CapacityDockMetrics {
         case .connected: 0
         }
         let taskCount = min(max(activeTaskCount, 0), CapacityDockActiveTaskSnapshot.maxTasks)
-        let taskExtra: CGFloat = taskCount == 0 ? 0 : 10 + CGFloat(taskCount) * 18
+        let workspaceLines = min(max(activeTaskWorkspaceCount, 0), taskCount)
+        let taskExtra: CGFloat = taskCount == 0 ? 0 : 10 + CGFloat(taskCount) * 18 + CGFloat(workspaceLines) * 12
         let base = min(
             470,
             max(132, 88 + CGFloat(rows) * 62 + CGFloat(footer) + actionExtra + connectionExtra + taskExtra)
@@ -1391,17 +1393,42 @@ private struct CapacityDockActiveTaskRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 7 * scale) {
             CapacityDockLiveDot(size: 8 * scale)
-            Text(task.title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.capacityDockText.opacity(0.88))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .help(task.title)
+            VStack(alignment: .leading, spacing: 1 * scale) {
+                if let workspace = task.workspace {
+                    Text(workspace)
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color.capacityDockText.opacity(0.5))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                Text(task.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.capacityDockText.opacity(0.88))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .help(helpText)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            String(format: NSLocalizedString("Active, %@", comment: ""), task.title)
-        )
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var helpText: String {
+        if let workspace = task.workspace {
+            return "\(workspace) · \(task.title)"
+        }
+        return task.title
+    }
+
+    private var accessibilityText: String {
+        if let workspace = task.workspace {
+            return String(
+                format: NSLocalizedString("Active, %@, %@", comment: ""),
+                workspace,
+                task.title
+            )
+        }
+        return String(format: NSLocalizedString("Active, %@", comment: ""), task.title)
     }
 }
 

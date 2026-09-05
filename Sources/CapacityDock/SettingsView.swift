@@ -6,7 +6,7 @@ struct CapacityDockSettingsView: View {
     @State private var searchText = ""
     @State private var snapshot = CapacityDockPreferences.load()
 
-    private static let mainPaneIDs: Set<String> = ["general", "about"]
+    private static let mainPaneIDs: Set<String> = ["general", "about", "usage"]
     private static let windowWidth: CGFloat = 880
     private static let windowHeight: CGFloat = 620
     private static let sidebarWidth: CGFloat = 260
@@ -94,6 +94,12 @@ struct CapacityDockSettingsView: View {
                         systemImage: "info.circle.fill",
                         color: .gray
                     )
+                    SettingsSidebarPaneRow(
+                        pane: "usage",
+                        title: NSLocalizedString("Usage", comment: ""),
+                        systemImage: "list.bullet.rectangle.fill",
+                        color: .gray
+                    )
                 }
                 Section {
                     ForEach(filteredProviders) { provider in
@@ -121,6 +127,7 @@ struct CapacityDockSettingsView: View {
         switch selection.wrappedValue {
         case "general": return NSLocalizedString("General", comment: "")
         case "about": return NSLocalizedString("About", comment: "")
+        case "usage": return NSLocalizedString("Usage", comment: "")
         default:
             return providers.first { $0.id == selection.wrappedValue }?.name
                 ?? NSLocalizedString("Capacity Dock Settings", comment: "")
@@ -132,6 +139,8 @@ struct CapacityDockSettingsView: View {
         switch selection.wrappedValue {
         case "about":
             AboutSettingsTab(store: store)
+        case "usage":
+            ConsumptionSettingsTab()
         case "general":
             GeneralSettingsTab(store: store, snapshot: $snapshot)
         default:
@@ -144,10 +153,7 @@ struct CapacityDockSettingsView: View {
     }
 
     private func isConnected(_ provider: CapacityDockProvider) -> Bool {
-        guard let connection = store.capacityDockQuotaSummary(for: provider)?.connection else {
-            return false
-        }
-        return connection == .connected || connection == .stale
+        store.capacityDockQuotaSummary(for: provider)?.isEstablishedSession == true
     }
 
     struct ProviderPane: Identifiable {
@@ -373,7 +379,7 @@ private struct GeneralSettingsTab: View {
                     .disabled(!CapacityDockProviderSelection.canDeselect(
                         provider,
                         selected: snapshot.selectedProviders,
-                        isConnected: { store.capacityDockQuotaSummary(for: $0)?.connection == .connected }
+                        isConnected: { store.capacityDockQuotaSummary(for: $0)?.isEstablishedSession == true }
                     ))
                 }
                 Picker("Preferred provider", selection: preferredBinding) {
@@ -630,8 +636,7 @@ private struct ProviderConnectionSections: View {
     }
 
     private var isConnected: Bool {
-        guard let connection = summary?.connection else { return false }
-        return connection == .connected || connection == .stale
+        summary?.isEstablishedSession == true
     }
 
     private var hasLiveAdapter: Bool {
