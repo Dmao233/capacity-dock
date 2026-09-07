@@ -63,6 +63,9 @@ enum CodeBurnPricing {
     /// Compact LiteLLM snapshot rows used on this Mac. `cacheWrite == nil`
     /// means CodeBurn fabricates 1.25× input and marks it not explicit.
     private static let snapshot: [String: SnapshotEntry] = [
+        // OpenAI standard API rates, verified 2026-09-07:
+        // https://developers.openai.com/api/docs/models/gpt-6-astra
+        "gpt-6-astra": .init(input: 10e-6, output: 50e-6, cacheWrite: 12.5e-6, cacheRead: 1e-6, fast: 2),
         "grok-4.6": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 5e-7),
         "grok-4.5": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 3e-7),
         "grok-build-0.1": .init(input: 1e-6, output: 2e-6, cacheWrite: nil, cacheRead: 2e-7),
@@ -160,7 +163,7 @@ enum CodeBurnPricing {
         let cacheCreation = max(safe(cacheCreationTokens), oneHour)
         let fiveMinute = max(0, cacheCreation - oneHour)
         let prompt = input + cacheRead
-        let costs = tieredCosts(model: model, base: base, promptTokens: prompt)
+        let costs = tieredCosts(model: model, base: base, promptTokens: prompt, cacheCreationTokens: cacheCreation)
         let multiplier = speed == "fast" ? costs.fastMultiplier : 1
         return multiplier * (
             Double(input) * costs.inputCostPerToken
@@ -236,7 +239,18 @@ enum CodeBurnPricing {
         return String(model[model.index(after: slash)...])
     }
 
-    private static func tieredCosts(model: String, base: ModelCosts, promptTokens: Int) -> ModelCosts {
+    private static func tieredCosts(
+        model: String, base: ModelCosts, promptTokens: Int, cacheCreationTokens: Int
+    ) -> ModelCosts {
+        if resolveCanonicalModelId(model) == "gpt-6-astra",
+           promptTokens + cacheCreationTokens > 272_000 {
+            var high = base
+            high.inputCostPerToken *= 2
+            high.cacheReadCostPerToken *= 2
+            high.cacheWriteCostPerToken *= 2
+            high.outputCostPerToken *= 1.5
+            return high
+        }
         if resolveCanonicalModelId(model) == "grok-4.6", promptTokens >= grok46PromptThreshold {
             return grok46HighPrompt
         }

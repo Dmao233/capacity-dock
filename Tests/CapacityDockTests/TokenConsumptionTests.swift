@@ -120,6 +120,64 @@ struct TokenConsumptionTests {
         #expect(CodeBurnPricing.calculateCost(model: "grok-4.6", inputTokens: 100_000, outputTokens: 10_000, cacheCreationTokens: 0, cacheReadTokens: 100_000) == 0.62)
     }
 
+    @Test("Astra uses official input, cache and output rates", arguments: ["gpt-6-astra", "openai/gpt-6-astra", "gpt-6-astra-20260903"])
+    func astraStandardPricing(model: String) {
+        #expect(CodeBurnPricing.hasBillableRate(model))
+        let cost = CodeBurnPricing.calculateCost(
+            model: model, inputTokens: 100_000, outputTokens: 1_000,
+            cacheCreationTokens: 10_000, cacheReadTokens: 100_000
+        )
+        #expect(abs(cost - 1.275) < 1e-9)
+        #expect(CodeBurnPricing.getModelCosts(model)?.cacheWriteCostIsExplicit == true)
+    }
+
+    @Test("Astra long context starts strictly above 272K including cache writes")
+    func astraLongContextPricing() {
+        let normal = CodeBurnPricing.calculateCost(
+            model: "gpt-6-astra", inputTokens: 100_000, outputTokens: 1_000,
+            cacheCreationTokens: 10_000, cacheReadTokens: 162_000
+        )
+        #expect(abs(normal - 1.337) < 1e-9)
+        let long = CodeBurnPricing.calculateCost(
+            model: "openai/gpt-6-astra", inputTokens: 100_000, outputTokens: 1_000,
+            cacheCreationTokens: 10_001, cacheReadTokens: 162_000
+        )
+        #expect(abs(long - 2.649025) < 1e-9)
+    }
+
+    @Test("Astra logs are priced after discarding the previous parser cache")
+    func astraLogPricingAndCacheUpgrade() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("capacity-dock-astra-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let folder = home.appendingPathComponent(".codex/sessions/2026/09/07")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("rollout-astra.jsonl")
+        let log = """
+        {"timestamp":"2026-09-07T10:00:00Z","type":"turn_context","payload":{"model":"gpt-6-astra"}}
+        {"timestamp":"2026-09-07T10:01:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":30,"cached_input_tokens":10,"cache_write_input_tokens":5,"output_tokens":6,"reasoning_output_tokens":1},"total_token_usage":{"input_tokens":30,"cached_input_tokens":10,"cache_write_input_tokens":5,"output_tokens":6,"reasoning_output_tokens":1,"total_tokens":36}}}}
+        """
+        try log.write(to: file, atomically: true, encoding: .utf8)
+        let now = try #require(TokenConsumptionClock.parseTimestamp("2026-09-07T12:00:00Z"))
+        let cacheURL = home.appendingPathComponent("cache.json")
+        var old = TokenLogDayCache()
+        old.version = 4
+        old.store(file: file, fingerprint: TokenLogDayCache.fingerprint(of: file), events: [])
+        old.save(to: cacheURL)
+        let deps = LocalTokenLogReader.Deps(home: home, now: now, timeZone: .gmt, cacheURL: cacheURL)
+        let snapshot = LocalTokenLogReader.load(period: .today, deps: deps)
+        let row = try #require(snapshot.rows.first { $0.providerID == "codex" })
+        #expect(row.totals.input == 15)
+        #expect(row.totals.cacheRead == 10)
+        #expect(row.totals.cacheWrite == 5)
+        #expect(row.pricedEventCount == 1)
+        #expect(row.unpricedEventCount == 0)
+        // Output already includes reasoning: 150 + 10 + 62.5 + 300 microdollars.
+        #expect(abs((row.estimatedUSD ?? 0) - 0.0005225) < 1e-10)
+        #expect(TokenLogDayCache.load(from: cacheURL).version == 5)
+        let cached = LocalTokenLogReader.load(period: .today, deps: deps)
+        #expect(cached == snapshot)
+    }
+
     @Test("missing logs never become a $0 row")
     func missingLogsAreNotZeroBills() {
         let now = Date()

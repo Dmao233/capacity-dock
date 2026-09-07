@@ -532,7 +532,8 @@ enum JSONLStreamer {
 /// Daily event cache so week/month does not reread unchanged JSONL.
 /// Stores only provider, day, model, and token counts — never session text.
 struct TokenLogDayCache: Equatable, Codable, Sendable {
-    var version = 4
+    // Astra now has explicit cache-write pricing; reparse old input/cache splits.
+    var version = 5
     var files: [String: FileEntry] = [:]
 
     struct FileEntry: Equatable, Codable, Sendable {
@@ -572,7 +573,7 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
               FileManager.default.fileExists(atPath: url.path),
               let data = try? SafeFile.read(from: url.path, maxBytes: SafeFile.defaultReadLimit),
               let decoded = try? JSONDecoder().decode(TokenLogDayCache.self, from: data),
-              decoded.version == 4
+              decoded.version == 5
         else { return TokenLogDayCache() }
         return decoded
     }
