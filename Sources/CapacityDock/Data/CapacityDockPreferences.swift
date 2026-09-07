@@ -164,6 +164,7 @@ enum CapacityDockPreferences {
     static let themeKey = "CapacityDockTheme"
     static let gaugeShapeKey = "CapacityDockGaugeShape"
     static let keepExpandedKey = "CapacityDockKeepExpanded"
+    static let currencyKey = "CapacityDockCurrency"
     static let manualSelectionKey = "CapacityDockManualSelection"
     static let shellVersionKey = "CapacityDockShellVersion"
     static let currentShellVersion = 2
@@ -395,6 +396,15 @@ enum CapacityDockPreferences {
         defaults: UserDefaults = .standard
     ) {
         defaults.set(gaugeShape.rawValue, forKey: gaugeShapeKey)
+        notifyChanged()
+    }
+
+    static func currencyCode(defaults: UserDefaults = .standard) -> String? {
+        defaults.string(forKey: currencyKey)?.uppercased()
+    }
+
+    static func setCurrencyCode(_ code: String, defaults: UserDefaults = .standard) {
+        defaults.set(code.uppercased(), forKey: currencyKey)
         notifyChanged()
     }
 

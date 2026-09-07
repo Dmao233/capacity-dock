@@ -6,12 +6,18 @@ struct ConsumptionSettingsTab: View {
     @State private var selectedProviderID = "all"
     @State private var snapshot: TokenConsumptionSnapshot?
     @State private var isLoading = false
+    @State private var currency = DisplayCurrency.usd
+    @State private var loadID = UUID()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             if isLoading && snapshot == nil {
-                loadingRow
+                if period == .today, case .amount(let usd) = MenubarBillStore.shared.badge {
+                    warmHero(usd)
+                } else {
+                    loadingRow
+                }
             } else if let snapshot {
                 providerChips(snapshot)
                 ScrollView {
@@ -31,6 +37,17 @@ struct ConsumptionSettingsTab: View {
         }
         .padding(compactLayout ? 14 : 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onReceive(NotificationCenter.default.publisher(for: .capacityDockCurrencyDidChange)) { _ in
+            currency = DisplayCurrencyState.shared.snapshot
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .capacityDockMenubarBillDidChange)) { _ in
+            if period == .today, !isLoading {
+                snapshot = MenubarBillStore.shared.snapshot
+            }
+        }
+        .task {
+            currency = DisplayCurrencyState.shared.snapshot
+        }
         .task(id: period) {
             await load()
         }
@@ -46,7 +63,7 @@ struct ConsumptionSettingsTab: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
                 Button(NSLocalizedString("Reload local logs", comment: "")) {
-                    Task { await load() }
+                    Task { await load(force: true) }
                 }
                 .disabled(isLoading)
                 .controlSize(compactLayout ? .small : .regular)
@@ -71,6 +88,16 @@ struct ConsumptionSettingsTab: View {
         .accessibilityElement(children: .combine)
     }
 
+    private func warmHero(_ usd: Double) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(TokenConsumptionFormatting.money(usd, currency: currency))
+                .font(.system(size: compactLayout ? 28 : 32, weight: .semibold))
+                .monospacedDigit()
+                .accessibilityLabel(TokenConsumptionFormatting.money(usd, currency: currency))
+            loadingRow
+        }
+    }
+
     @ViewBuilder
     private func providerChips(_ snapshot: TokenConsumptionSnapshot) -> some View {
         let billed = snapshot.billedProviderRows
@@ -80,13 +107,18 @@ struct ConsumptionSettingsTab: View {
                     providerChip(
                         id: "all",
                         title: NSLocalizedString("All", comment: ""),
-                        amount: TokenConsumptionPresentation.heroAmount(snapshot.periodTotals)
+                        amount: TokenConsumptionPresentation.heroAmount(
+                            snapshot.periodTotals,
+                            currency: currency
+                        )
                     )
                     ForEach(billed) { row in
                         providerChip(
                             id: row.providerID,
                             title: row.displayName,
-                            amount: row.showsCurrency ? TokenConsumptionFormatting.usd(row.estimatedUSD ?? 0) : nil
+                            amount: row.showsCurrency
+                                ? TokenConsumptionFormatting.money(row.estimatedUSD ?? 0, currency: currency)
+                                : nil
                         )
                     }
                 }
@@ -140,7 +172,7 @@ struct ConsumptionSettingsTab: View {
                     .help(NSLocalizedString("Logs exist, but this period has no token events.", comment: ""))
             case .billed:
                 HStack(alignment: .firstTextBaseline, spacing: 16) {
-                    Text(TokenConsumptionPresentation.heroAmount(totals) ?? "")
+                    Text(TokenConsumptionPresentation.heroAmount(totals, currency: currency) ?? "")
                         .font(.system(size: compactLayout ? 28 : 32, weight: .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
@@ -280,7 +312,7 @@ struct ConsumptionSettingsTab: View {
             TokenConsumptionPresentation.callsText(day.calls)
         ]
         if day.showsCurrency, let usd = day.estimatedUSD {
-            parts.insert(TokenConsumptionFormatting.usd(usd), at: 1)
+            parts.insert(TokenConsumptionFormatting.money(usd, currency: currency), at: 1)
         }
         return parts.joined(separator: " · ")
     }
@@ -310,7 +342,7 @@ struct ConsumptionSettingsTab: View {
                             .lineLimit(1)
                             .help(model.model)
                         Spacer(minLength: 8)
-                        Text(model.showsCurrency ? TokenConsumptionFormatting.usd(model.estimatedUSD ?? 0) : "—")
+                        Text(model.showsCurrency ? TokenConsumptionFormatting.money(model.estimatedUSD ?? 0, currency: currency) : "—")
                             .font(.system(size: 12, design: .monospaced))
                             .monospacedDigit()
                             .lineLimit(1)
@@ -343,22 +375,62 @@ struct ConsumptionSettingsTab: View {
                 Text("Providers")
                     .font(.subheadline.weight(.semibold))
                 ForEach(rows) { row in
-                    ConsumptionLedgerRow(row: row, period: snapshot.period)
+                    ConsumptionLedgerRow(row: row, period: snapshot.period, currency: currency)
                 }
             }
         }
     }
 
     private func footer(_ snapshot: TokenConsumptionSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Estimates ≠ subscription bill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Text(sectionFooter(snapshot))
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Estimates ≠ subscription bill")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(sectionFooter(snapshot))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            currencyMenu
+            if DisplayCurrencyState.shared.isUpdating {
+                Text("Updating exchange rate…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            if let message = DisplayCurrencyState.shared.errorMessage {
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    private var currencyMenu: some View {
+        Menu {
+            ForEach(SupportedCurrency.allCases) { item in
+                Button {
+                    DisplayCurrencyState.shared.select(item.rawValue)
+                } label: {
+                    if item.rawValue == currency.code {
+                        Label(
+                            "\(item.displayName) (\(item.rawValue))",
+                            systemImage: "checkmark"
+                        )
+                    } else {
+                        Text("\(item.displayName) (\(item.rawValue))")
+                    }
+                }
+            }
+        } label: {
+            Label(currency.code, systemImage: "dollarsign.circle")
+                .font(.system(size: 11, weight: .medium))
+                .labelStyle(.titleAndIcon)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel(NSLocalizedString("Currency", comment: ""))
     }
 
     private var emptyCopy: String {
@@ -372,25 +444,33 @@ struct ConsumptionSettingsTab: View {
         return NSLocalizedString("A missing token log is not a $0 bill.", comment: "")
     }
 
-    private func load() async {
-        isLoading = true
+    private func load(force: Bool = false) async {
+        let requestID = UUID()
+        loadID = requestID
         let chosen = period
-        let result = await Task.detached(priority: .userInitiated) {
-            LocalTokenLogReader.load(period: chosen)
-        }.value
-        guard chosen == period else { return }
+        if snapshot?.period != chosen { snapshot = nil }
+        if !force, chosen == .today, let cached = MenubarBillStore.shared.snapshot,
+           cached.window.contains(Date()) {
+            snapshot = cached
+        }
+        isLoading = true
+        defer {
+            if loadID == requestID { isLoading = false }
+        }
+        let result = await MenubarBillStore.shared.snapshot(for: chosen, force: force)
+        guard !Task.isCancelled, loadID == requestID, chosen == period else { return }
         snapshot = result
         if selectedProviderID != "all",
            result.billedProviderRows.contains(where: { $0.providerID == selectedProviderID }) == false {
             selectedProviderID = "all"
         }
-        isLoading = false
     }
 }
 
 private struct ConsumptionLedgerRow: View {
     let row: TokenConsumptionRow
     let period: TokenConsumptionPeriod
+    var currency: DisplayCurrency = .usd
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -551,7 +631,7 @@ private struct ConsumptionLedgerRow: View {
 
     private var amountLine: String {
         if row.showsCurrency, let usd = row.estimatedUSD {
-            let money = TokenConsumptionFormatting.usd(usd)
+            let money = TokenConsumptionFormatting.money(usd, currency: currency)
             if row.unpricedEventCount > 0 {
                 return String(format: NSLocalizedString("Est. %@ · some calls unpriced", comment: ""), money)
             }

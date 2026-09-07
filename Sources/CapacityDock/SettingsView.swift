@@ -389,7 +389,12 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
-            Section("Display") {
+            Section {
+                Picker("Currency", selection: currencyBinding) {
+                    ForEach(SupportedCurrency.allCases) { currency in
+                        Text("\(currency.rawValue) · \(currency.displayName)").tag(currency.rawValue)
+                    }
+                }
                 HStack(spacing: 10) {
                     Text("Size")
                     Slider(value: scaleBinding, in: CapacityDockPreferences.scaleRange, step: 0.05)
@@ -408,6 +413,16 @@ private struct GeneralSettingsTab: View {
                     ForEach(CapacityDockGaugeShape.allCases, id: \.self) { shape in
                         Text(shape.displayName).tag(shape)
                     }
+                }
+            } header: {
+                Text("Display")
+            } footer: {
+                Text("Menu-bar and usage amounts convert from USD. The underlying bill stays in dollars.")
+                if DisplayCurrencyState.shared.isUpdating {
+                    Text("Updating exchange rate…")
+                }
+                if let message = DisplayCurrencyState.shared.errorMessage {
+                    Text(message)
                 }
             }
 
@@ -482,6 +497,15 @@ private struct GeneralSettingsTab: View {
         Binding(
             get: { snapshot.gaugeShape },
             set: { CapacityDockPreferences.setGaugeShape($0) }
+        )
+    }
+
+    private var currencyBinding: Binding<String> {
+        Binding(
+            get: {
+                DisplayCurrencyState.shared.code
+            },
+            set: { DisplayCurrencyState.shared.select($0) }
         )
     }
 

@@ -428,18 +428,11 @@ enum TokenConsumptionFormatting {
     }
 
     static func usd(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "USD"
-        formatter.locale = Locale(identifier: "en_US")
-        if value > 0, value < 0.01 {
-            formatter.minimumFractionDigits = 4
-            formatter.maximumFractionDigits = 4
-        } else {
-            formatter.minimumFractionDigits = 2
-            formatter.maximumFractionDigits = 2
-        }
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "$%.2f", value)
+        money(value, currency: .usd)
+    }
+
+    static func money(_ value: Double, currency: DisplayCurrency) -> String {
+        currency.grouped(value)
     }
 }
 
@@ -459,9 +452,12 @@ enum TokenConsumptionPresentation {
     }
 
     /// Dollar hero, matching CodeBurn's menubar amount. Nil when there is no priced usage.
-    static func heroAmount(_ totals: TokenConsumptionPeriodTotals) -> String? {
+    static func heroAmount(
+        _ totals: TokenConsumptionPeriodTotals,
+        currency: DisplayCurrency = .usd
+    ) -> String? {
         guard totals.showsCurrency, let usd = totals.estimatedUSD else { return nil }
-        return TokenConsumptionFormatting.usd(usd)
+        return TokenConsumptionFormatting.money(usd, currency: currency)
     }
 
     static func windowLabel(_ snapshot: TokenConsumptionSnapshot) -> String {

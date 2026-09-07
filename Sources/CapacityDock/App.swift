@@ -35,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         controller?.start()
         store.start()
         installStatusItem()
+        DisplayCurrencyState.shared.start()
+        MenubarBillStore.shared.start()
+        refreshStatusButton()
         NotificationCenter.default.addObserver(
             forName: .capacityDockOpenProviderSettings,
             object: nil,
@@ -42,6 +45,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.openSettings()
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .capacityDockMenubarBillDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshStatusButton()
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .capacityDockCurrencyDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshStatusButton()
             }
         }
     }
@@ -60,6 +81,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         false
     }
 
+    func popoverDidClose(_ notification: Notification) {
+        statusItem?.length = NSStatusItem.variableLength
+        refreshStatusButton()
+    }
+
     private func seedFirstLaunchIfNeeded() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: CapacityDockPreferences.selectedProvidersKey) == nil {
@@ -73,13 +99,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "◉"
-        item.button?.setAccessibilityTitle(NSLocalizedString("Capacity Dock", comment: ""))
-        item.button?.toolTip = NSLocalizedString("Usage details. Right-click for settings.", comment: "")
         item.button?.target = self
         item.button?.action = #selector(statusItemActivated(_:))
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
+        refreshStatusButton()
+    }
+
+    private func refreshStatusButton() {
+        guard let button = statusItem?.button else { return }
+        button.image = nil
+        button.imagePosition = .noImage
+        let badge = MenubarBillStore.shared.badge
+        let currency = DisplayCurrencyState.shared.snapshot
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+        let composed = NSMutableAttributedString(string: "◉")
+        var textAttrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .baselineOffset: -1.0
+        ]
+        if badge == .pending {
+            textAttrs[.foregroundColor] = NSColor.secondaryLabelColor
+        }
+        composed.append(NSAttributedString(string: badge.menubarText(currency: currency), attributes: textAttrs))
+        button.attributedTitle = composed
+        button.setAccessibilityTitle(
+            NSLocalizedString("Capacity Dock", comment: "") + badge.menubarText(currency: currency)
+        )
+        button.toolTip = NSLocalizedString("Usage details. Right-click for settings.", comment: "")
     }
 
     private func makeStatusMenu() -> NSMenu {
@@ -166,6 +213,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
         // Stay accessory. Activating .regular here hides the menu bar the way
         // the old titled bill window did. The popover takes key focus itself.
+        refreshStatusButton()
+        statusItem?.length = max(button.bounds.width, 1)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         if let window = popover.contentViewController?.view.window {
             window.level = .statusBar

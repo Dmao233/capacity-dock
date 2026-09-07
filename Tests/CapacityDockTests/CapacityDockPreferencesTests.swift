@@ -50,6 +50,19 @@ struct CapacityDockPreferencesTests {
         #expect(CapacityDockPreferences.load(defaults: defaults).theme == .graphite)
     }
 
+    @Test("display currency persists independently from placement")
+    func persistsCurrency() {
+        let defaults = defaults()
+        #expect(CapacityDockPreferences.currencyCode(defaults: defaults) == nil)
+
+        CapacityDockPreferences.setCurrencyCode("cny", defaults: defaults)
+        #expect(CapacityDockPreferences.currencyCode(defaults: defaults) == "CNY")
+
+        CapacityDockPreferences.setCurrencyCode("USD", defaults: defaults)
+        #expect(CapacityDockPreferences.currencyCode(defaults: defaults) == "USD")
+        #expect(CapacityDockPreferences.load(defaults: defaults).theme == .graphite)
+    }
+
     @Test("gauge channel shape persists independently from the dock surface")
     func persistsGaugeShape() {
         let defaults = defaults()
