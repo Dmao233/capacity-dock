@@ -322,8 +322,8 @@ private extension LocalTokenLogReader {
         cache: inout TokenLogDayCache
     ) -> [TokenConsumptionEvent] {
         let fingerprint = TokenLogDayCache.fingerprint(of: file)
-        if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: "codex") {
-            return cached.filter { window.contains($0.date) }
+        if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: "codex", window: window) {
+            return cached
         }
         var model: String?
         var sessionID = file.deletingPathExtension().lastPathComponent
@@ -422,8 +422,8 @@ private extension LocalTokenLogReader {
         parseLine: (String) -> [TokenConsumptionEvent]
     ) -> [TokenConsumptionEvent] {
         let fingerprint = TokenLogDayCache.fingerprint(of: file)
-        if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: providerID) {
-            return cached.filter { window.contains($0.date) }
+        if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: providerID, window: window) {
+            return cached
         }
         var parsed: [TokenConsumptionEvent] = []
         JSONLStreamer.forEachLine(at: file) { line in
@@ -570,7 +570,9 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
     // Astra now has explicit cache-write pricing; reparse old input/cache splits.
     var version = 5
     static let readLimit = 128 * 1024 * 1024
-    var files: [String: FileEntry] = [:]
+    var files: [String: FileEntry] = [:] { didSet { needsSave = true } }
+    private var needsSave = false
+    private enum CodingKeys: String, CodingKey { case version, files }
 
     struct FileEntry: Equatable, Codable, Sendable {
         var size: Int
@@ -614,23 +616,40 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
         return decoded
     }
 
-    func save(to url: URL?) {
-        guard let url else { return }
+    mutating func save(to url: URL?) {
+        guard needsSave, let url else { return }
         do {
-            let data = try JSONEncoder().encode(self)
+            // Encode one log entry at a time so Foundation's intermediate JSON
+            // objects do not scale with the entire historical cache.
+            var data = Data("{\"version\":\(version),\"files\":{".utf8)
+            let encoder = JSONEncoder()
+            for (index, entry) in files.enumerated() {
+                try autoreleasepool {
+                    if index > 0 { data.append(0x2C) }
+                    data.append(try encoder.encode(entry.key))
+                    data.append(0x3A)
+                    data.append(try encoder.encode(entry.value))
+                }
+            }
+            data.append(contentsOf: "}}".utf8)
             try SafeFile.write(data, to: url.path)
+            needsSave = false
         } catch {
             return
         }
     }
 
-    func events(for file: URL, fingerprint: Fingerprint, providerID: String) -> [TokenConsumptionEvent]? {
+    func events(for file: URL, fingerprint: Fingerprint, providerID: String, window: TokenConsumptionWindow? = nil) -> [TokenConsumptionEvent]? {
         guard let entry = files[file.path],
               entry.size == fingerprint.size,
               entry.mtime == fingerprint.mtime
         else { return nil }
         return entry.events.compactMap { stored in
             guard stored.providerID == providerID else { return nil }
+            if let window,
+               (stored.timestamp < window.start.timeIntervalSince1970 || stored.timestamp > window.end.timeIntervalSince1970) {
+                return nil
+            }
             return TokenConsumptionEvent(
                 providerID: stored.providerID,
                 date: Date(timeIntervalSince1970: stored.timestamp),

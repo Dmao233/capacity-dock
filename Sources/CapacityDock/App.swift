@@ -13,6 +13,10 @@ struct CapacityDockApp: App {
             EmptyView()
         }
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { appDelegate.openSettings() }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
             CommandGroup(after: .appInfo) {
                 Button("Usage overview") { appDelegate.openUsageDetails() }
                     .keyboardShortcut("1", modifiers: .command)
@@ -198,8 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     @objc func openSettings() {
         closeBillPopover()
-        let window = ensureSettingsWindow()
         NSApp.setActivationPolicy(.regular)
+        let window = ensureSettingsWindow()
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
@@ -247,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         )
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 880, height: 620),
-            styleMask: [.titled, .closable, .resizable],
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -257,9 +261,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         window.level = .floating
         window.isMovableByWindowBackground = true
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+        let appearance = UserDefaults.standard.string(forKey: "CapacityDockBillAppearance") ?? "dark"
+        window.appearance = appearance == "system" ? nil : NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
+        window.backgroundColor = NSColor(CapacityDockInterfacePalette.surface(appearance == "light" ? .light : .dark))
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.contentMinSize = NSSize(width: 880, height: 620)
         window.contentViewController = hosting
+        window.setContentSize(NSSize(width: 880, height: 620))
         window.delegate = self
-        window.center()
+        // Place once, after content sizing, on the screen where settings was invoked.
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+            window.setFrameOrigin(SettingsWindowPlacement.origin(size: window.frame.size, visibleFrame: screen.visibleFrame))
+        }
         settingsWindow = window
         return window
     }
@@ -301,5 +315,13 @@ enum StatusItemActivation: Equatable {
         default:
             return .openUsageDetails
         }
+    }
+}
+
+/// Center in the usable screen area, including displays with nonzero origins.
+enum SettingsWindowPlacement {
+    static func origin(size: CGSize, visibleFrame: CGRect) -> CGPoint {
+        CGPoint(x: visibleFrame.minX + max(0, (visibleFrame.width - size.width) / 2),
+                y: visibleFrame.maxY - size.height - max(0, (visibleFrame.height - size.height) / 2))
     }
 }

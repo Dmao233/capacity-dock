@@ -63,7 +63,7 @@ Rail geometry, hover, and the detail card come from [CodeBurn](https://github.co
 | Usage overview | Today’s estimate in the menu bar; a compact popover with Today / 7 Days / This Month summaries |
 | Charts and details | Token composition, an independent 30-day trend, and an 81-day activity heatmap; hover for daily model usage and estimated cost |
 | Models / providers | Switch grouping below the chart and expand token details; currency controls stay visible |
-| Appearance | Light, dark, or system theme; number transitions and row hover feedback; the refresh indicator stops when idle |
+| Appearance | Light, dark, or system theme; centered chart tabs with a sliding selection, number transitions, and row hover feedback; the refresh indicator stops when idle |
 | Currencies | 19 display currencies including USD, CNY, and EUR, with cached exchange rates and USD source estimates |
 | Menu-bar extra | Left-click for the overview, right-click for Settings; restore a hidden rail from here; no Dock slot |
 | Spaces | Follows every desktop; not pinned to the Space where it first appeared |
@@ -129,11 +129,12 @@ Drag to change edges. Contact with an edge grows the scoop; pulling it into the 
 
 Click the menu-bar amount to open the bill directly below it. The existing edge rings continue to show subscription quotas.
 
+- **Consistent surfaces:** The menu-bar popover and Settings Usage page share themes, summaries, charts, hover details, currency controls, and cached reads.
 - **Period summaries:** Today, 7 Days, and This Month control the main cost, call count, input / output / cache totals, and the model/provider list.
 - **Independent trend:** The chart always covers the last 30 days, even with Today selected. Hover a bar for the date, daily total, model usage, and estimated cost.
 - **Activity heatmap:** The last 81 days appear as three rows of fixed-size squares with four intensity levels. Hover for daily details. Missing records are distinguished from measured zero usage.
-- **Appearance:** Use the top-right More menu for light, dark, or system theme, and the footer for currency. Animations respect Reduce Motion.
-- **Historical loading:** File fingerprints reuse parsed logs, duplicate requests share work, and streaming releases temporary memory promptly. The first scan of a large history can still take time and shows progress; later period switches reuse caches.
+- **Appearance:** Dark violet is the default across the bill and all Settings pages. Use the top-right More menu for light, dark, or system theme, and the footer for currency. Period and chart controls share sliding selection and hover feedback; period controls stay left-aligned and chart controls are centered. Model/provider underlines animate consistently. Animations respect Reduce Motion.
+- **Historical loading:** File fingerprints reuse parsed logs, duplicate requests share work, and streaming releases temporary memory promptly. Unchanged caches are not rewritten; per-entry encoding and early period filtering reduce temporary allocations. The first scan of a large history can still take time and shows progress; later period switches reuse caches. Background checks run once per minute, while opening a page uses a 30-second freshness window and manual reload bypasses it.
 
 Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. Amounts are **API-equivalent estimates, not subscription bills or actual charges**. This version adds `gpt-6-astra` rates and its long-context tier. Unpriced models retain their usage; unknown prices are not presented as confirmed zero cost.
 

@@ -35,7 +35,7 @@ enum MenubarBillBadge: Equatable, Sendable {
 
 /// Keeps the status-item dollar figure warm the way CodeBurn keeps
 /// `menubar-status.json`: last amount on disk, in-memory snapshot for Today,
-/// 30s TTL, and a background scan that never blocks the click.
+/// 30s interaction TTL, and a minute background scan that never blocks the click.
 @MainActor
 @Observable
 final class MenubarBillStore {
@@ -74,11 +74,12 @@ final class MenubarBillStore {
     func start() {
         if timer != nil { return }
         Task { await refresh(force: false) }
-        let timer = Timer(timeInterval: Self.ttl, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.refresh(force: false)
             }
         }
+        timer.tolerance = 5
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }

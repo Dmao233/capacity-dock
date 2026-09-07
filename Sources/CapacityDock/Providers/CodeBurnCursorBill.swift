@@ -55,8 +55,8 @@ enum CodeBurnCursorBill {
             return ([], .cursorHashOnly, false)
         }
         let fingerprint = TokenLogDayCache.fingerprint(of: dbURL)
-        if let cached = cache.events(for: dbURL, fingerprint: fingerprint, providerID: "cursor") {
-            return (cached.filter { window.contains($0.date) }, .logged, true)
+        if let cached = cache.events(for: dbURL, fingerprint: fingerprint, providerID: "cursor", window: window) {
+            return (cached, .logged, true)
         }
         var events: [TokenConsumptionEvent] = []
         do {
@@ -252,8 +252,8 @@ enum CodeBurnCursorBill {
             let values = try? file.resourceValues(forKeys: [.contentModificationDateKey])
             if let modified = values?.contentModificationDate, modified < window.start { continue }
             let fingerprint = TokenLogDayCache.fingerprint(of: file)
-            if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: "cursor-agent") {
-                events.append(contentsOf: cached.filter { window.contains($0.date) })
+            if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: "cursor-agent", window: window) {
+                events.append(contentsOf: cached)
                 continue
             }
             let date = values?.contentModificationDate ?? Date()

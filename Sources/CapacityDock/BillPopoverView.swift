@@ -1,9 +1,10 @@
 import SwiftUI
 import Charts
 
-/// Menu-bar surface only. Settings and the edge dock retain their own layouts.
+/// Shared bill presentation for the menu-bar popover and Settings usage page.
 struct BillPopoverView: View {
-    @AppStorage("CapacityDockBillAppearance") private var appearance = "system"
+    var topInset: CGFloat = 0
+    @AppStorage("CapacityDockBillAppearance") private var appearance = "dark"
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var period: TokenConsumptionPeriod = .today
@@ -16,28 +17,23 @@ struct BillPopoverView: View {
     @State private var activityData: TokenConsumptionSnapshot?
 
     private var scheme: ColorScheme { appearance == "dark" ? .dark : appearance == "light" ? .light : systemScheme }
-    private var accent: Color { scheme == .dark ? Color(red: 0.66, green: 0.59, blue: 1) : Color(red: 0.03, green: 0.45, blue: 0.43) }
-    private var surface: Color { scheme == .dark ? Color(red: 0.085, green: 0.095, blue: 0.13) : Color(red: 0.97, green: 0.975, blue: 0.98) }
+    private var accent: Color { CapacityDockInterfacePalette.accent(scheme) }
+    private var surface: Color { CapacityDockInterfacePalette.surface(scheme) }
     @State private var chartMode = "trend"
+    @Namespace private var detailSelection
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 header
-                Picker("Period", selection: $period) {
-                    ForEach(TokenConsumptionPeriod.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented).labelsHidden()
+                BillSegmentedControl(selection: $period,
+                    items: TokenConsumptionPeriod.allCases.map { BillSegment(id: $0, title: LocalizedStringKey($0.title)) },
+                    itemWidth: 62, accent: accent)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Period")
                 if let snapshot {
                     summary(snapshot)
-                    HStack {
-                        Picker("Chart", selection: $chartMode) {
-                            Text("Composition").tag("composition")
-                            Text("Trend").tag("trend")
-                            Text("Activity").tag("activity")
-                        }.pickerStyle(.segmented).labelsHidden().frame(width: 186)
-                        Spacer()
-                        Text(chartMode == "activity" ? NSLocalizedString("Last 81 days", comment: "") : chartMode == "trend" ? NSLocalizedString("Last 30 days", comment: "") : period.title).font(.system(size: 9)).foregroundStyle(.secondary)
-                    }
+                    chartModePicker
                     if chartMode != "composition" {
                         if let activityData {
                             if chartMode == "activity" { activity(activityData) }
@@ -59,7 +55,7 @@ struct BillPopoverView: View {
                             .font(.system(size: 10)).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, minHeight: 214)
                 }
-            }.padding(16)
+            }.padding(16).padding(.top, topInset)
             .overlay(alignment: .bottomLeading) {
                 if let selectedDay, chartMode != "composition",
                    let detailSnapshot = activityData {
@@ -74,6 +70,7 @@ struct BillPopoverView: View {
                 Spacer()
                 Text("Cost").foregroundStyle(.secondary).font(.system(size: 10))
             }.padding(.horizontal, 18).padding(.top, 8)
+                .animation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.85), value: showProviders)
             ScrollView {
                 if let snapshot {
                     LazyVStack(spacing: 0) {
@@ -131,6 +128,21 @@ struct BillPopoverView: View {
         }
     }
 
+    private var chartModePicker: some View {
+        ZStack {
+            BillSegmentedControl(selection: $chartMode, items: [
+                BillSegment(id: "composition", title: "Composition"),
+                BillSegment(id: "trend", title: "Trend"),
+                BillSegment(id: "activity", title: "Activity")
+            ], itemWidth: 60, accent: accent)
+            HStack {
+                Spacer()
+                Text(chartMode == "activity" ? NSLocalizedString("Last 81 days", comment: "") : chartMode == "trend" ? NSLocalizedString("Last 30 days", comment: "") : period.title)
+                    .font(.system(size: 9)).foregroundStyle(.secondary)
+            }.allowsHitTesting(false)
+        }.frame(maxWidth: .infinity).frame(height: 31)
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
             BillActivityOrb(active: isLoading, accent: accent, reduceMotion: reduceMotion)
@@ -153,7 +165,7 @@ struct BillPopoverView: View {
                 }
             } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                .accessibilityLabel("Bill appearance")
+                .accessibilityLabel("Appearance")
         }
     }
 
@@ -354,7 +366,11 @@ struct BillPopoverView: View {
         Button { showProviders = providers } label: {
             VStack(spacing: 7) {
                 Text(label).font(.system(size: 12, weight: .semibold)).foregroundStyle(showProviders == providers ? accent : .secondary)
-                Rectangle().fill(showProviders == providers ? accent : .clear).frame(height: 2)
+                Color.clear.frame(height: 2).overlay {
+                    if showProviders == providers {
+                        Rectangle().fill(accent).matchedGeometryEffect(id: "detail-selection", in: detailSelection)
+                    }
+                }
             }.fixedSize(horizontal: true, vertical: false)
         }.buttonStyle(.plain).accessibilityAddTraits(showProviders == providers ? [.isSelected] : [])
     }
@@ -558,5 +574,64 @@ private struct BillActivityOrb: View {
                 .overlay { Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.5) }
                 .clipShape(Circle())
         }
+    }
+}
+
+/// Shared interaction for period and chart selection; no timers or idle animation.
+private struct BillSegment<Selection: Hashable>: Identifiable {
+    let id: Selection
+    let title: LocalizedStringKey
+}
+
+private struct BillSegmentedControl<Selection: Hashable>: View {
+    @Binding var selection: Selection
+    let items: [BillSegment<Selection>]
+    let itemWidth: CGFloat
+    let accent: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovered: Selection?
+    @Namespace private var indicator
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(items) { item in
+                let selected = selection == item.id
+                Button { selection = item.id } label: {
+                    Text(item.title)
+                        .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.75))
+                        .frame(width: itemWidth, height: 25)
+                        .background {
+                            if selected {
+                                RoundedRectangle(cornerRadius: 6).fill(accent)
+                                    .matchedGeometryEffect(id: "selection", in: indicator)
+                            } else if hovered == item.id {
+                                RoundedRectangle(cornerRadius: 6).fill(accent.opacity(0.10))
+                            }
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? [.isSelected] : [])
+                .onHover { hovered = $0 ? item.id : nil }
+            }
+        }
+        .padding(3)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
+        .animation(reduceMotion ? nil : .spring(response: 0.30, dampingFraction: 0.85), value: selection)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
+    }
+}
+
+/// Shared settings and bill palette; the edge widget keeps its established styling.
+enum CapacityDockInterfacePalette {
+    static func accent(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.66, green: 0.59, blue: 1) : Color(red: 0.03, green: 0.45, blue: 0.43)
+    }
+    static func surface(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.085, green: 0.095, blue: 0.13) : Color(red: 0.97, green: 0.975, blue: 0.98)
+    }
+    static func sidebar(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.065, green: 0.075, blue: 0.105) : Color(red: 0.94, green: 0.95, blue: 0.96)
     }
 }

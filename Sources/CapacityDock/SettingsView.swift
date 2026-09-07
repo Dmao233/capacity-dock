@@ -3,6 +3,10 @@ import SwiftUI
 
 struct CapacityDockSettingsView: View {
     var store: CapacityDockStore
+    @AppStorage("CapacityDockBillAppearance") private var appearance = "dark"
+    @Environment(\.colorScheme) private var systemScheme
+    private var scheme: ColorScheme { appearance == "dark" ? .dark : appearance == "light" ? .light : systemScheme }
+    private var accent: Color { CapacityDockInterfacePalette.accent(scheme) }
     @State private var searchText = ""
     @State private var snapshot = CapacityDockPreferences.load()
 
@@ -45,8 +49,7 @@ struct CapacityDockSettingsView: View {
             sidebar
                 .frame(width: Self.sidebarWidth)
                 .background {
-                    SettingsSidebarMaterial()
-                        .ignoresSafeArea()
+                    CapacityDockInterfacePalette.sidebar(scheme).ignoresSafeArea()
                 }
 
             Divider()
@@ -56,8 +59,13 @@ struct CapacityDockSettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: Self.windowWidth, minHeight: Self.windowHeight)
+        .background(CapacityDockInterfacePalette.surface(scheme))
+        .tint(accent)
+        .accentColor(accent)
+        .environment(\.colorScheme, scheme)
+        .preferredColorScheme(appearance == "system" ? nil : scheme)
         .background {
-            SettingsWindowStyleAccessor(title: currentPaneTitle)
+            SettingsWindowStyleAccessor(title: currentPaneTitle, appearance: appearance, scheme: scheme)
                 .allowsHitTesting(false)
         }
         .onReceive(NotificationCenter.default.publisher(for: .capacityDockPreferencesDidChange)) { _ in
@@ -86,19 +94,19 @@ struct CapacityDockSettingsView: View {
                         pane: "general",
                         title: NSLocalizedString("General", comment: ""),
                         systemImage: "gearshape.fill",
-                        color: .gray
+                        color: accent
                     )
                     SettingsSidebarPaneRow(
                         pane: "about",
                         title: NSLocalizedString("About", comment: ""),
                         systemImage: "info.circle.fill",
-                        color: .gray
+                        color: accent
                     )
                     SettingsSidebarPaneRow(
                         pane: "usage",
                         title: NSLocalizedString("Usage", comment: ""),
                         systemImage: "list.bullet.rectangle.fill",
-                        color: .gray
+                        color: accent
                     )
                 }
                 Section {
@@ -279,26 +287,10 @@ private struct SettingsSidebarSearchField: View {
     }
 }
 
-private struct SettingsSidebarMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        configure(view)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        configure(nsView)
-    }
-
-    private func configure(_ view: NSVisualEffectView) {
-        view.material = .sidebar
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-    }
-}
-
 private struct SettingsWindowStyleAccessor: NSViewRepresentable {
     let title: String
+    let appearance: String
+    let scheme: ColorScheme
 
     func makeNSView(context: Context) -> SettingsWindowStyleView {
         SettingsWindowStyleView()
@@ -306,13 +298,16 @@ private struct SettingsWindowStyleAccessor: NSViewRepresentable {
 
     func updateNSView(_ nsView: SettingsWindowStyleView, context: Context) {
         nsView.paneTitle = title
+        nsView.appearancePreference = appearance
+        nsView.scheme = scheme
         nsView.applyStyle()
     }
 }
 
 private final class SettingsWindowStyleView: NSView {
     var paneTitle = "Settings"
-    private var didPlaceWindow = false
+    var appearancePreference = "dark"
+    var scheme: ColorScheme = .dark
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -324,17 +319,13 @@ private final class SettingsWindowStyleView: NSView {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .visible
         window.titlebarSeparatorStyle = .none
-        window.styleMask.insert(.fullSizeContentView)
-        window.styleMask.insert(.resizable)
-        window.title = paneTitle
-        window.collectionBehavior.insert(.fullScreenPrimary)
-        if !didPlaceWindow {
-            didPlaceWindow = true
-            if let screen = window.screen ?? NSScreen.main,
-               !screen.visibleFrame.contains(window.frame) {
-                window.center()
-            }
+        if window.title != paneTitle { window.title = paneTitle }
+        let desiredAppearance: NSAppearance.Name? = appearancePreference == "system" ? nil : (scheme == .dark ? .darkAqua : .aqua)
+        if window.appearance?.name != desiredAppearance {
+            window.appearance = desiredAppearance.flatMap { NSAppearance(named: $0) }
         }
+        let background = NSColor(CapacityDockInterfacePalette.surface(scheme))
+        if window.backgroundColor != background { window.backgroundColor = background }
     }
 }
 
@@ -441,6 +432,7 @@ private struct GeneralSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .padding()
     }
 
@@ -546,6 +538,7 @@ private struct AboutSettingsTab: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .padding()
         .onAppear {
             if updateResult == nil {
@@ -606,6 +599,7 @@ private struct ProviderSettingsTab: View {
                 .id(provider.id)
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .padding()
     }
 }

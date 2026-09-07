@@ -425,7 +425,8 @@ final class CapacityDockController {
     /// hover enter/exit is synthesized here from the event monitors, which
     /// observe the pointer regardless of activation.
     private func syncPointerHover(at point: CGPoint = NSEvent.mouseLocation) {
-        guard model.preferences.isEnabled,
+        guard !isPresentingRailMenu,
+              model.preferences.isEnabled,
               model.interaction.acceptsHoverTransitions,
               railPanel != nil else { return }
         let bounds = railPanel.map { CGRect(origin: .zero, size: $0.frame.size) } ?? .zero
@@ -674,8 +675,15 @@ final class CapacityDockController {
         menu.addItem(addItem("Hide Capacity Dock") { [weak self] in self?.hideDock() })
 
         railMenuProxies = proxies
-        let local = railPanel.convertPoint(fromScreen: screenPoint)
+        let local = contentView.convert(railPanel.convertPoint(fromScreen: screenPoint), from: nil)
+        // Shielding-level dock panels must not cover AppKit's menu windows.
+        let railLevel = railPanel.level
+        let detailLevel = detailPanel?.level
+        railPanel.level = .floating
+        detailPanel?.level = .floating
         menu.popUp(positioning: nil, at: local, in: contentView)
+        railPanel.level = railLevel
+        if let detailLevel { detailPanel?.level = detailLevel }
         railMenuProxies = []
         isPresentingRailMenu = false
         updateMouseEventPassthrough()
@@ -809,8 +817,9 @@ final class CapacityDockController {
         let wasShowingDetail = detailPanel?.isVisible == true && model.hoveredProvider != nil
         detailIsDismissing = false
         model.hoveredProvider = provider
-        applyDetailHeight(for: provider)
+        // Clear the previous provider's task rows before sizing the new card.
         startActiveTaskMonitoring()
+        applyDetailHeight(for: provider)
         ensureDetailPanel()
         layoutDetail(
             for: provider,

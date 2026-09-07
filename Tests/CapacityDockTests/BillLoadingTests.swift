@@ -75,6 +75,53 @@ struct BillLoadingTests {
         #expect(loaded.events(for: source, fingerprint: TokenLogDayCache.fingerprint(of: source), providerID: "codex")?.first?.totals.input == 1)
     }
 
+    @Test("Unchanged cache is not rewritten; changed entries still persist")
+    func cacheWritesOnlyChanges() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("bill-dirty-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let target = root.appendingPathComponent("cache.json")
+        let source = root.appendingPathComponent("session.jsonl")
+        let fingerprint = TokenLogDayCache.Fingerprint(size: 2, mtime: 1)
+        var cache = TokenLogDayCache()
+        cache.store(file: source, fingerprint: fingerprint, events: [])
+        let escaped = root.appendingPathComponent("中文-\"quoted\".jsonl")
+        cache.store(file: escaped, fingerprint: fingerprint, events: [
+            TokenConsumptionEvent(providerID: "codex", date: Date(timeIntervalSince1970: 123), model: "test", totals: .init(input: 7))
+        ])
+        cache.save(to: target)
+        #expect(TokenLogDayCache.load(from: target).files == cache.files)
+        let sentinel = Date(timeIntervalSince1970: 1_000)
+        try FileManager.default.setAttributes([.modificationDate: sentinel], ofItemAtPath: target.path)
+        var loaded = TokenLogDayCache.load(from: target)
+        loaded.save(to: target)
+        cache.save(to: target)
+        let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
+        #expect(attributes[.modificationDate] as? Date == sentinel)
+        loaded.store(file: source, fingerprint: .init(size: 3, mtime: 2), events: [])
+        // A failed save must retain the pending change.
+        loaded.save(to: root.appendingPathComponent("cache.json/invalid"))
+        loaded.save(to: target)
+        #expect(TokenLogDayCache.load(from: target).files[source.path]?.size == 3)
+    }
+
+    @Test("Cache filters by inclusive window before materializing events")
+    func cachedWindowBoundaries() {
+        let file = URL(fileURLWithPath: "/fixture/session.jsonl")
+        let fingerprint = TokenLogDayCache.Fingerprint(size: 1, mtime: 1)
+        let window = TokenConsumptionWindow(start: Date(timeIntervalSince1970: 100),
+                                            end: Date(timeIntervalSince1970: 200), now: Date(timeIntervalSince1970: 150))
+        var cache = TokenLogDayCache()
+        let events = [99.0, 100, 150, 200, 201].map {
+            TokenConsumptionEvent(providerID: "codex", date: Date(timeIntervalSince1970: $0), model: "test", totals: .init(input: 1))
+        }
+        cache.store(file: file, fingerprint: fingerprint, events: events)
+        #expect(cache.events(for: file, fingerprint: fingerprint, providerID: "codex", window: window)?.map(\.date)
+                == events.filter { window.contains($0.date) }.map(\.date))
+        #expect(cache.events(for: file, fingerprint: fingerprint, providerID: "other", window: window)?.isEmpty == true)
+        #expect(cache.events(for: file, fingerprint: .init(size: 2, mtime: 1), providerID: "codex", window: window) == nil)
+    }
+
     private actor CountingReader {
         var count = 0
         func load(period: TokenConsumptionPeriod, now: Date, zone: TimeZone) -> TokenConsumptionSnapshot {

@@ -212,8 +212,8 @@ enum CodeBurnGrokReader {
                 if let mtime, mtime < window.start { continue }
 
                 let fingerprint = TokenLogDayCache.fingerprint(of: updatesURL)
-                if let cached = cache.events(for: updatesURL, fingerprint: fingerprint, providerID: "grok") {
-                    events.append(contentsOf: cached.filter { window.contains($0.date) })
+                if let cached = cache.events(for: updatesURL, fingerprint: fingerprint, providerID: "grok", window: window) {
+                    events.append(contentsOf: cached)
                     continue
                 }
                 guard let summaryData = try? SafeFile.read(from: summaryURL.path, maxBytes: SafeFile.defaultReadLimit),
