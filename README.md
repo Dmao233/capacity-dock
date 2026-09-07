@@ -47,7 +47,7 @@
 
 Capacity Dock 是 macOS 14+ 的菜单栏附属应用，没有 Dock 图标。它把各家 AI 的真实配额贴在屏幕边缘：没登录就是 `-`，不编造用量。
 
-待机只留当前首选环。悬停展开已选服务商，并向内打开详情：进度、重置时间、套餐。正在用的会话会出现在 `Source:` 下面：小字工作区 + 会话标题。菜单栏 `◉` 左键看本机 token 账单，右键打开设置。
+待机只留当前首选环。悬停展开已选服务商，并向内打开详情：进度、重置时间、套餐。正在用的会话会出现在 `Source:` 下面：小字工作区 + 会话标题。菜单栏显示今天的估算金额，左键打开消耗概览，右键打开设置。
 
 几何、悬停和详情卡片来自 [CodeBurn](https://github.com/getagentseal/codeburn) 的 Capacity Dock（MIT）。本仓库做成可安装的独立小工具。
 
@@ -60,7 +60,12 @@ Capacity Dock 是 macOS 14+ 的菜单栏附属应用，没有 Dock 图标。它�
 | 详情 | 进度、重置时间、套餐、连接；进行中任务显示工作区和会话标题 |
 | 本机读取 | Codex、Claude、Cursor、Gemini、Antigravity、Copilot、Kimi Code、Grok 读本机登录；ClinePass、Z.ai 也可在设置里填密钥 |
 | 设置 | 左侧边栏：通用 / 消耗 / 关于 / 服务商，可检查更新 |
-| 菜单栏入口 | `◉` 左键账单、右键设置；隐藏后从这里再打开，不占 Dock |
+| 消耗概览 | 菜单栏显示今日估算金额；点击后在下方打开紧凑账单，按今天 / 近 7 天 / 本月查看汇总 |
+| 图表与明细 | 用量构成、独立近 30 天趋势、近 81 天活动热力图；悬停查看当天模型用量与估算金额 |
+| 模型 / 服务商 | 下方分组切换、展开 token 明细，保留固定币种入口 |
+| 外观与动效 | 浅色、深色或跟随系统；金额过渡、行悬停反馈，刷新指示在空闲时停止 |
+| 多币种 | USD、CNY、EUR 等 19 种展示币种，缓存汇率并保留原始 USD 估算 |
+| 菜单栏入口 | 左键消耗概览、右键设置；隐藏侧栏后可从这里恢复，不占 Dock |
 | 跟桌面走 | 所有 Space 都在，不会钉在第一次出现的那一屏 |
 | 中英 | 系统语言是简体中文时用中文 |
 
@@ -95,7 +100,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.2.0
+Scripts/package-app.sh 0.3.0
 open .build/dist/CapacityDock.app
 ```
 
@@ -119,6 +124,20 @@ swift run
 7. 悬停某家环时，若该服务商正在用，详情里 `Source:` 下面会出现绿圈、工作区小字和会话标题，最多 3 条。
 
 拖动槽可以换边。贴到边缘会重新长出勺形接触；拉到桌面中间则变成圆角胶囊，设置条改到尾部。
+
+## 消耗概览（0.3.0）
+
+点击菜单栏金额即可打开图标下方的账单面板。原来的边缘配额环继续用于查看套餐配额。
+
+- **周期汇总**：今天、近 7 天、本月控制大金额、调用次数、输入 / 输出 / 缓存用量，以及下方模型和服务商明细。
+- **独立趋势**：即使选择今天，趋势图仍显示最近 30 天；悬停柱子查看日期、当天总用量、各模型的用量和估算金额。
+- **活动热力图**：最近 81 天按三行排列，每天一个固定大小的小方块，颜色分四档。悬停同样有当天明细；无记录与实测零消耗分开表示。
+- **外观**：右上角「更多」选择浅色、深色或跟随系统；底部选择展示币种。动效尊重系统的「减少动态效果」。
+- **历史读取**：按文件指纹复用日志缓存，合并重复请求，流式读取时及时释放临时内存。首次读取大量历史日志仍可能较慢，界面会显示读取进度；后续周期切换可复用缓存。
+
+本机账单读取 Codex、Claude、Grok、Cursor 和 Cursor Agent 的 token 日志，金额是 **API 等价估算，不是订阅账单或实际扣费**。本版补齐 `gpt-6-astra` 的估算单价与长上下文档位。未定价模型仍保留用量，不把未知价格当作已确认的零费用。
+
+币种仅影响显示，原始估算保持 USD。非 USD 币种需要汇率；无可用缓存且汇率获取失败时保持原币种并提示。选择币种还会同步到 `~/.config/codeburn/config.json` 的币种字段，方便与 CodeBurn 配合使用，保留该文件的其他设置。
 
 ## 配额数据
 
@@ -178,6 +197,7 @@ swift test
 ## 致谢
 
 - 槽的实现从 [CodeBurn](https://github.com/getagentseal/codeburn) 抽出，版权见 [NOTICE](NOTICE)。
+- 消耗概览参考 CodeBurn 的布局、悬停明细与缓存策略；活动方块和动效参考 [Rare UI](https://www.rareui.com/components/githubactivity)，使用原生 SwiftUI 实现。
 - 设计稿：[CodeBurn Capacity Dock on Figma](https://www.figma.com/design/RxGVxLJ3okxSKYnquk4ysI/CodeBurn-Capacity-Dock)
 
 ## 许可

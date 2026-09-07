@@ -35,6 +35,12 @@ jobs:
           {
             echo "## Capacity Dock ${VERSION}"
             echo
+            awk -v version="${VERSION}" '
+              $0 == "## " version { active = 1; next }
+              active && /^## / { exit }
+              active { print }
+            ' CHANGELOG.md
+            echo
             echo "macOS 14+ 通用二进制（arm64 + x86_64），ad-hoc 签名。"
             echo
             echo "- \`CapacityDock-${VERSION}.pkg\` — 双击安装到 /Applications"
