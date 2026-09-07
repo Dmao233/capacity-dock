@@ -100,7 +100,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.0
+Scripts/package-app.sh 0.3.1
 open .build/dist/CapacityDock.app
 ```
 
@@ -125,7 +125,7 @@ swift run
 
 拖动槽可以换边。贴到边缘会重新长出勺形接触；拉到桌面中间则变成圆角胶囊，设置条改到尾部。
 
-## 消耗概览（0.3.0）
+## 消耗概览（0.3.1）
 
 点击菜单栏金额即可打开图标下方的账单面板。原来的边缘配额环继续用于查看套餐配额。
 

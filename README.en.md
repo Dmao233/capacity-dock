@@ -100,7 +100,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.0
+Scripts/package-app.sh 0.3.1
 open .build/dist/CapacityDock.app
 ```
 
@@ -125,7 +125,7 @@ swift run
 
 Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
 
-## Usage overview (0.3.0)
+## Usage overview (0.3.1)
 
 Click the menu-bar amount to open the bill directly below it. The existing edge rings continue to show subscription quotas.
 

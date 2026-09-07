@@ -754,17 +754,17 @@ final class CapacityDockController {
         guard let provider = model.hoveredProvider else { return }
         activeTaskGeneration += 1
         let generation = activeTaskGeneration
-        Task.detached { [weak self] in
-            let tasks = CapacityDockActiveTaskSnapshot.tasks(for: provider)
-            await MainActor.run {
-                guard let self, generation == self.activeTaskGeneration else { return }
-                guard self.model.hoveredProvider == provider else { return }
-                let changed = self.model.activeTasks != tasks
-                self.model.activeTasks = tasks
-                if changed {
-                    self.applyDetailHeight(for: provider)
-                    self.layoutDetail(for: provider, transaction: .immediate)
-                }
+        Task { [weak self] in
+            let tasks = await Task.detached {
+                CapacityDockActiveTaskSnapshot.tasks(for: provider)
+            }.value
+            guard let self, generation == self.activeTaskGeneration else { return }
+            guard self.model.hoveredProvider == provider else { return }
+            let changed = self.model.activeTasks != tasks
+            self.model.activeTasks = tasks
+            if changed {
+                self.applyDetailHeight(for: provider)
+                self.layoutDetail(for: provider, transaction: .immediate)
             }
         }
     }

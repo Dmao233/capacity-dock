@@ -458,7 +458,7 @@ private struct BillDetailRow: View {
             .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 1).fill(accent.opacity(proximity * 0.6)).frame(width: 2, height: 24) }
             .onContinuousHover { phase in
                 switch phase {
-                case .active(let point): proximity = max(0.2, 1 - abs(point.y - 26) / 90)
+                case .active(let point): proximity = max(0.2, 1 - abs(Double(point.y) - 26) / 90)
                 case .ended: proximity = 0
                 }
             }
