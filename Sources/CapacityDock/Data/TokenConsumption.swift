@@ -57,7 +57,7 @@ enum TokenConsumptionClock {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let today = calendar.startOfDay(for: now)
-        let start = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        let start = calendar.date(byAdding: .day, value: -80, to: today) ?? today
         return TokenConsumptionWindow(start: start, end: endOfLocalDay(today, calendar: calendar), now: now)
     }
 

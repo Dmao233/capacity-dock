@@ -34,7 +34,7 @@ struct BillPopoverTests {
         #expect(days[8].date.timeIntervalSince(days[7].date) == 23 * 3600)
     }
 
-    @Test("Activity always spans 30 calendar days including today across DST")
+    @Test("Activity always spans 81 calendar days including today across DST")
     func activityHistoryWindow() {
         let zone = TimeZone(identifier: "America/Los_Angeles")!
         let now = TokenConsumptionClock.parseTimestamp("2026-03-10T18:00:00Z")!
@@ -43,9 +43,11 @@ struct BillPopoverTests {
         let value = TokenConsumptionSnapshot(period: .month,
             window: TokenConsumptionClock.activityWindow(now: now, timeZone: zone), rows: [], scannedAnyLog: false)
         let days = BillPopoverPresentation.days(value, calendar: calendar)
-        #expect(days.count == 30)
-        #expect(Set(days.map(\.label)).count == 30)
+        #expect(days.count == 81)
+        #expect(Set(days.map(\.label)).count == 81)
         #expect(days.last?.label == "2026-03-10")
+        let trend = BillPopoverPresentation.trendHistory(value, calendar: calendar)
+        #expect(BillPopoverPresentation.days(trend, calendar: calendar).count == 30)
         #expect(days.allSatisfy { $0.tokens == nil })
     }
 

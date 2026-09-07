@@ -190,6 +190,8 @@
 "Reading Codex logs %d / %d" = "正在读取 Codex 日志 %d / %d";
 "Historical logs are cached after the first read." = "首次读取历史日志后，会缓存结果以加快切换。";
 
-"Last 30 days" = "近 30 天";
+"Last 81 days" = "近 81 天";
 
 "%d more models" = "另有 %d 个模型";
+
+"Last 30 days" = "近 30 天";

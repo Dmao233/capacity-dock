@@ -36,12 +36,12 @@ struct BillPopoverView: View {
                             Text("Activity").tag("activity")
                         }.pickerStyle(.segmented).labelsHidden().frame(width: 186)
                         Spacer()
-                        Text(chartMode != "composition" ? NSLocalizedString("Last 30 days", comment: "") : period.title).font(.system(size: 9)).foregroundStyle(.secondary)
+                        Text(chartMode == "activity" ? NSLocalizedString("Last 81 days", comment: "") : chartMode == "trend" ? NSLocalizedString("Last 30 days", comment: "") : period.title).font(.system(size: 9)).foregroundStyle(.secondary)
                     }
                     if chartMode != "composition" {
                         if let activityData {
                             if chartMode == "activity" { activity(activityData) }
-                            else { chart(activityData) }
+                            else { chart(BillPopoverPresentation.trendHistory(activityData)) }
                         }
                         else {
                             VStack(spacing: 8) {
@@ -273,11 +273,11 @@ struct BillPopoverView: View {
                 Spacer()
                 Text("Gaps mean no records").font(.system(size: 9)).foregroundStyle(.secondary)
             }
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(11), spacing: 3), count: 10), alignment: .leading, spacing: 3) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(11), spacing: 3), count: 27), alignment: .leading, spacing: 3) {
                 ForEach(days) { day in
                     activityCell(day, peak: peak)
                 }
-            }.frame(width: 137).frame(maxWidth: .infinity)
+            }.frame(width: 375).frame(maxWidth: .infinity)
             HStack {
                 Text(days.first?.label ?? "")
                 Spacer()
@@ -513,6 +513,16 @@ enum BillPopoverPresentation {
         // Aggregated output already includes reasoning; adding it again overstates usage.
         [Part(title: "Input", value: totals.input), Part(title: "Output", value: totals.output),
          Part(title: "Cache", value: totals.cacheRead + totals.cacheWrite)]
+    }
+
+    static func trendHistory(_ snapshot: TokenConsumptionSnapshot, calendar: Calendar = .current) -> TokenConsumptionSnapshot {
+        var result = snapshot
+        let today = calendar.startOfDay(for: snapshot.window.now)
+        let start = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        result.window = TokenConsumptionWindow(start: start, end: snapshot.window.end, now: snapshot.window.now)
+        let firstDay = TokenConsumptionClock.dayKey(start, timeZone: calendar.timeZone)
+        result.daily = snapshot.daily.filter { $0.day >= firstDay }
+        return result
     }
 
     static func days(_ snapshot: TokenConsumptionSnapshot, calendar: Calendar = .current) -> [Day] {
