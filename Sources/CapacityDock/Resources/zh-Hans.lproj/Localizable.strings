@@ -156,3 +156,40 @@
 "Calls" = "调用";
 "Some calls unpriced" = "部分调用无价";
 "Estimates ≠ subscription bill" = "估算 ≠ 订阅账单";
+
+"Usage overview" = "消耗概览";
+"Local logs · API-equivalent estimate" = "本机日志 · API 等价估算";
+"All providers" = "全部服务商";
+"System" = "跟随系统";
+"Light" = "浅色";
+"Dark" = "深色";
+"Bill appearance" = "账单主题";
+"Tokens" = "总用量";
+"Cache" = "缓存";
+"Daily tokens" = "每日用量";
+"Gaps mean no records" = "空缺表示无记录";
+"Token composition" = "用量构成";
+"Including cached tokens" = "包含缓存用量";
+"Use an AI coding tool on this Mac, then reload local logs." = "在本机使用 AI 编程工具后，重新读取日志。";
+"Switch the period or view provider status." = "切换周期，或查看服务商状态。";
+"Unpriced calls are included in token counts but excluded from the estimate." = "未定价调用计入用量，不计入估算金额。";
+"Expanded" = "已展开";
+"Collapsed" = "已收起";
+
+"Estimate ≠ subscription bill" = "估算 ≠ 订阅账单";
+"No records" = "无记录";
+
+"Chart" = "图表";
+"Composition" = "构成";
+"Trend" = "趋势";
+"Activity" = "活动";
+"Daily activity" = "每日活动";
+"Less" = "少";
+"More" = "多";
+
+"Reading Codex logs %d / %d" = "正在读取 Codex 日志 %d / %d";
+"Historical logs are cached after the first read." = "首次读取历史日志后，会缓存结果以加快切换。";
+
+"Last 30 days" = "近 30 天";
+
+"%d more models" = "另有 %d 个模型";

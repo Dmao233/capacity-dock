@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// CodeBurn-style menubar figure: today's priced total, or `$—` until a
 /// successful local scan exists. Compact form matches
@@ -36,25 +37,32 @@ enum MenubarBillBadge: Equatable, Sendable {
 /// `menubar-status.json`: last amount on disk, in-memory snapshot for Today,
 /// 30s TTL, and a background scan that never blocks the click.
 @MainActor
+@Observable
 final class MenubarBillStore {
     static let shared = MenubarBillStore()
     static let ttl: TimeInterval = 30
 
     private(set) var badge: MenubarBillBadge = .pending
     private(set) var snapshot: TokenConsumptionSnapshot?
-    private var lastRefresh: Date?
+    private(set) var scanProgress: [TokenConsumptionPeriod: String] = [:]
+    private var scanIDs: [TokenConsumptionPeriod: UUID] = [:]
+    private var activityTask: Task<TokenConsumptionSnapshot, Never>?
+    private var activitySnapshot: TokenConsumptionSnapshot?
+    private var activityRefreshedAt: Date?
+    private(set) var activityProgress = ""
     private var scans: [TokenConsumptionPeriod: Task<TokenConsumptionSnapshot, Never>] = [:]
     private var timer: Timer?
+    private var completed: [TokenConsumptionPeriod: (snapshot: TokenConsumptionSnapshot, refreshedAt: Date)] = [:]
     private let cacheURL: URL?
     private let now: () -> Date
     private let timeZone: TimeZone
-    private let load: @Sendable (TokenConsumptionPeriod, Date, TimeZone) async -> TokenConsumptionSnapshot
+    private let load: (@Sendable (TokenConsumptionPeriod, Date, TimeZone) async -> TokenConsumptionSnapshot)?
 
     init(
         cacheURL: URL? = MenubarBillStore.defaultCacheURL,
         now: @escaping () -> Date = Date.init,
         timeZone: TimeZone = .current,
-        load: @escaping @Sendable (TokenConsumptionPeriod, Date, TimeZone) async -> TokenConsumptionSnapshot = MenubarBillStore.loadLocal
+        load: (@Sendable (TokenConsumptionPeriod, Date, TimeZone) async -> TokenConsumptionSnapshot)? = nil
     ) {
         self.cacheURL = cacheURL
         self.now = now
@@ -79,15 +87,15 @@ final class MenubarBillStore {
         guard snapshot.period == .today else { return }
         guard snapshot.window.contains(now()) else {
             self.snapshot = nil
+            completed[.today] = nil
             badge = .pending
-            lastRefresh = nil
             persist()
             NotificationCenter.default.post(name: .capacityDockMenubarBillDidChange, object: nil)
             return
         }
         self.snapshot = snapshot
         badge = MenubarBillBadge.from(snapshot: snapshot)
-        lastRefresh = now()
+        completed[.today] = (snapshot, now())
         persist()
         NotificationCenter.default.post(name: .capacityDockMenubarBillDidChange, object: nil)
     }
@@ -95,17 +103,30 @@ final class MenubarBillStore {
     func snapshot(for period: TokenConsumptionPeriod, force: Bool = false) async -> TokenConsumptionSnapshot {
         // A forced reload bypasses completed cache entries, but joins an active scan.
         if let scan = scans[period] { return await scan.value }
-        if period == .today,
-           !force,
-           let snapshot,
-           let lastRefresh,
-           snapshot.window.contains(now()),
-           now().timeIntervalSince(lastRefresh) >= 0,
-           now().timeIntervalSince(lastRefresh) < Self.ttl {
-            return snapshot
+        if !force, let cached = completed[period],
+           cached.snapshot.window.contains(now()),
+           now().timeIntervalSince(cached.refreshedAt) >= 0,
+           now().timeIntervalSince(cached.refreshedAt) < Self.ttl {
+            return cached.snapshot
         }
+        let request = UUID()
+        scanIDs[period] = request
+        scanProgress[period] = NSLocalizedString("Reading local logs…", comment: "")
         let scan = Task {
-            let result = await load(period, now(), timeZone)
+            let result: TokenConsumptionSnapshot
+            if let load {
+                result = await load(period, now(), timeZone)
+            } else {
+                result = await LocalBillLoader.shared.load(period: period, now: now(), timeZone: timeZone) { [weak self] count, total in
+                    Task { @MainActor in
+                        guard let self, self.scanIDs[period] == request else { return }
+                        self.scanProgress[period] = String(format: NSLocalizedString("Reading Codex logs %d / %d", comment: ""), count, total)
+                    }
+                }
+            }
+            scanIDs[period] = nil
+            scanProgress[period] = nil
+            if result.window.contains(now()) { completed[period] = (result, now()) }
             if period == .today { apply(result) }
             scans[period] = nil
             return result
@@ -114,18 +135,51 @@ final class MenubarBillStore {
         return await scan.value
     }
 
+    func historicalActivity(force: Bool = false) async -> TokenConsumptionSnapshot {
+        if let activityTask { return await activityTask.value }
+        if !force, let activitySnapshot, let activityRefreshedAt,
+           activitySnapshot.window.contains(now()), now().timeIntervalSince(activityRefreshedAt) < Self.ttl {
+            return activitySnapshot
+        }
+        activityProgress = NSLocalizedString("Reading local logs…", comment: "")
+        let task = Task {
+            let result = await LocalBillLoader.shared.load(period: .month, now: now(), timeZone: timeZone, activity: true) { [weak self] count, total in
+                Task { @MainActor in
+                    self?.activityProgress = String(format: NSLocalizedString("Reading Codex logs %d / %d", comment: ""), count, total)
+                }
+            }
+            activitySnapshot = result
+            activityRefreshedAt = now()
+            activityTask = nil
+            return result
+        }
+        activityTask = task
+        return await task.value
+    }
+
     func refresh(force: Bool) async {
         _ = await snapshot(for: .today, force: force)
     }
 
-    private nonisolated static func loadLocal(
-        period: TokenConsumptionPeriod, now: Date, timeZone: TimeZone
-    ) async -> TokenConsumptionSnapshot {
-        await Task.detached(priority: .utility) {
+    /// All periods share one on-disk file cache. Serial reads prevent a small
+    /// Today scan from overwriting a concurrently completed historical cache.
+    private actor LocalBillLoader {
+        static let shared = LocalBillLoader()
+        private var cache = TokenLogDayCache()
+        private var loadedCache = false
+
+        func load(period: TokenConsumptionPeriod, now: Date, timeZone: TimeZone, activity: Bool = false, progress: @escaping @Sendable (Int, Int) -> Void) -> TokenConsumptionSnapshot {
             var deps = LocalTokenLogReader.Deps.live(now: now)
             deps.timeZone = timeZone
-            return LocalTokenLogReader.load(period: period, deps: deps)
-        }.value
+            deps.progress = progress
+            return autoreleasepool {
+                if !loadedCache {
+                    cache = TokenLogDayCache.load(from: deps.cacheURL)
+                    loadedCache = true
+                }
+                return LocalTokenLogReader.load(period: period, deps: deps, cache: &cache, window: activity ? TokenConsumptionClock.activityWindow(now: now, timeZone: timeZone) : nil)
+            }
+        }
     }
 
     private struct Record: Codable {

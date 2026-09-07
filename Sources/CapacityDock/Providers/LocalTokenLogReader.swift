@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Read-only local JSONL token logs. Quota percentages are not a source.
 enum LocalTokenLogReader {
@@ -9,6 +10,7 @@ enum LocalTokenLogReader {
         var now: Date
         var timeZone: TimeZone
         var cacheURL: URL?
+        var progress: (@Sendable (Int, Int) -> Void)? = nil
 
         static func live(now: Date = Date()) -> Deps {
             let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -28,8 +30,14 @@ enum LocalTokenLogReader {
         period: TokenConsumptionPeriod,
         deps: Deps = .live()
     ) -> TokenConsumptionSnapshot {
-        let window = TokenConsumptionClock.window(for: period, now: deps.now, timeZone: deps.timeZone)
         var cache = TokenLogDayCache.load(from: deps.cacheURL)
+        return load(period: period, deps: deps, cache: &cache)
+    }
+
+    /// Like CodeBurn's codex-cache memCaches: a resident caller loads the file
+    /// cache once and reuses its fingerprints across period changes.
+    static func load(period: TokenConsumptionPeriod, deps: Deps, cache: inout TokenLogDayCache, window customWindow: TokenConsumptionWindow? = nil) -> TokenConsumptionSnapshot {
+        let window = customWindow ?? TokenConsumptionClock.window(for: period, now: deps.now, timeZone: deps.timeZone)
         var events: [TokenConsumptionEvent] = []
         var availability: [String: TokenLogAvailability] = [:]
         var scannedAnyLog = false
@@ -299,9 +307,11 @@ private extension LocalTokenLogReader {
         let sawAny = directoryHasJSONL(deps.home.appendingPathComponent(".codex/sessions", isDirectory: true))
             || directoryHasJSONL(deps.home.appendingPathComponent(".codex/archived_sessions", isDirectory: true))
         var events: [TokenConsumptionEvent] = []
-        for file in files {
+        for (index, file) in files.enumerated() {
+            deps.progress?(index, files.count)
             events.append(contentsOf: parseCodexFile(file, window: window, deps: deps, cache: &cache))
         }
+        deps.progress?(files.count, files.count)
         return ScanResult(events: events, availability: sawAny ? .logged : .noLocalTokenLog, sawLogFile: sawAny)
     }
 
@@ -327,9 +337,12 @@ private extension LocalTokenLogReader {
         var parsed: [TokenConsumptionEvent] = []
         var seenKeys = Set<String>()
         JSONLStreamer.forEachLine(at: file) { line in
-            guard line.contains("token_count")
-                    || line.contains("session_meta")
-                    || line.contains("turn_context") else { return }
+            // These are ASCII JSON keys. Unicode substring search over transcript
+            // text dominated multi-day scans; libc searches the UTF-8 bytes directly.
+            guard line.withCString({ bytes in
+                strstr(bytes, "token_count") != nil || strstr(bytes, "session_meta") != nil
+                    || strstr(bytes, "turn_context") != nil
+            }) else { return }
             switch TokenLogLineParser.codexRecord(from: line) {
             case .sessionMeta(let name, let id, let forkedFrom, let timestamp):
                 if let name { model = name }
@@ -500,22 +513,44 @@ enum JSONLStreamer {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return }
         defer { try? handle.close() }
         var leftover = Data()
-        while true {
+        var discardingOversizedLine = false
+        // Foundation bridges each chunk/line through autoreleased objects.
+        // Without a per-chunk pool a long Swift task retains gigabytes of
+        // already-consumed transcript data until the entire scan returns.
+        while autoreleasepool(invoking: { () -> Bool in
             let chunk = handle.readData(ofLength: 64 * 1024)
-            if chunk.isEmpty { break }
+            if chunk.isEmpty { return false }
             leftover.append(chunk)
-            while let range = leftover.range(of: Data([0x0A])) {
-                let lineData = leftover.subdata(in: leftover.startIndex..<range.lowerBound)
-                leftover.removeSubrange(leftover.startIndex...range.lowerBound)
-                emit(lineData, body: body)
+            let boundaries: [Int] = leftover.withUnsafeBytes { buffer in
+                guard let base = buffer.baseAddress else { return [] }
+                var offsets: [Int] = []
+                var offset = 0
+                while offset < buffer.count,
+                      let newline = memchr(base.advanced(by: offset), 0x0A, buffer.count - offset) {
+                    let found = base.distance(to: newline)
+                    offsets.append(found)
+                    offset = found + 1
+                }
+                return offsets
             }
+            var cursor = leftover.startIndex
+            for offset in boundaries {
+                let newline = leftover.startIndex + offset
+                if !discardingOversizedLine, newline - cursor <= maxLineBytes {
+                    emit(leftover.subdata(in: cursor..<newline), body: body)
+                }
+                discardingOversizedLine = false
+                cursor = newline + 1
+            }
+            // Compact once per chunk, not once per line (quadratic byte copying).
+            leftover.removeSubrange(leftover.startIndex..<cursor)
             if leftover.count > maxLineBytes {
                 leftover.removeAll(keepingCapacity: true)
+                discardingOversizedLine = true
             }
-        }
-        if !leftover.isEmpty {
-            emit(leftover, body: body)
-        }
+            return true
+        }) {}
+        if !discardingOversizedLine, !leftover.isEmpty { emit(leftover, body: body) }
     }
 
     private static func emit(_ data: Data, body: (String) -> Void) {
@@ -534,6 +569,7 @@ enum JSONLStreamer {
 struct TokenLogDayCache: Equatable, Codable, Sendable {
     // Astra now has explicit cache-write pricing; reparse old input/cache splits.
     var version = 5
+    static let readLimit = 128 * 1024 * 1024
     var files: [String: FileEntry] = [:]
 
     struct FileEntry: Equatable, Codable, Sendable {
@@ -571,7 +607,7 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
     static func load(from url: URL?) -> TokenLogDayCache {
         guard let url,
               FileManager.default.fileExists(atPath: url.path),
-              let data = try? SafeFile.read(from: url.path, maxBytes: SafeFile.defaultReadLimit),
+              let data = try? SafeFile.read(from: url.path, maxBytes: Self.readLimit),
               let decoded = try? JSONDecoder().decode(TokenLogDayCache.self, from: data),
               decoded.version == 5
         else { return TokenLogDayCache() }

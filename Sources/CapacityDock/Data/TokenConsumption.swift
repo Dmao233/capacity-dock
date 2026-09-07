@@ -53,6 +53,14 @@ enum TokenConsumptionClock {
         return TokenConsumptionWindow(start: start, end: endOfToday, now: now)
     }
 
+    static func activityWindow(now: Date, timeZone: TimeZone = .current) -> TokenConsumptionWindow {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let today = calendar.startOfDay(for: now)
+        let start = calendar.date(byAdding: .day, value: -29, to: today) ?? today
+        return TokenConsumptionWindow(start: start, end: endOfLocalDay(today, calendar: calendar), now: now)
+    }
+
     static func endOfLocalDay(_ startOfDay: Date, calendar: Calendar) -> Date {
         let next = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay.addingTimeInterval(86_400)
         return next.addingTimeInterval(-0.001)
@@ -68,14 +76,15 @@ enum TokenConsumptionClock {
         return String(format: "%04d-%02d-%02d", year, month, day)
     }
 
+    private static let fractionalTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let wholeTimestamp = Date.ISO8601FormatStyle(includingFractionalSeconds: false)
+
     static func parseTimestamp(_ raw: String?) -> Date? {
         guard let raw, !raw.isEmpty else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: raw) { return date }
-        let basic = ISO8601DateFormatter()
-        basic.formatOptions = [.withInternetDateTime]
-        return basic.date(from: raw)
+        // Value-type strategies are reusable and Sendable; constructing ICU-backed
+        // formatters for every historical event made week/month scans take minutes.
+        if let date = try? fractionalTimestamp.parse(raw) { return date }
+        return try? wholeTimestamp.parse(raw)
     }
 }
 
@@ -171,12 +180,22 @@ struct TokenConsumptionModelRow: Equatable, Identifiable, Sendable {
     }
 }
 
+struct TokenConsumptionDayModel: Equatable, Identifiable, Sendable {
+    var providerID: String
+    var model: String
+    var tokens: Int = 0
+    var estimatedUSD: Double?
+    var id: String { providerID + ":" + model }
+}
+
 struct TokenConsumptionDay: Equatable, Identifiable, Sendable {
     var day: String
     var tokenCount: Int
     var calls: Int
     var estimatedUSD: Double?
     var pricedEventCount: Int
+
+    var models: [TokenConsumptionDayModel] = []
 
     var id: String { day }
 
@@ -322,6 +341,7 @@ enum TokenConsumptionAggregator {
         var unpriced: [String: Int] = [:]
         var usd: [String: Double] = [:]
         var modelsByProvider: [String: [String: ModelBucket]] = [:]
+        var dayModels: [String: [String: TokenConsumptionDayModel]] = [:]
         var dayTokens: [String: Int] = [:]
         var dayCalls: [String: Int] = [:]
         var dayUSD: [String: Double] = [:]
@@ -357,6 +377,13 @@ enum TokenConsumptionAggregator {
                 modelsByProvider[event.providerID, default: [:]][model] = bucket
             }
             let day = TokenConsumptionClock.dayKey(event.date, timeZone: timeZone)
+            let modelName = pricingModel ?? "unknown"
+            let modelID = event.providerID + ":" + modelName
+            var dayModel = dayModels[day, default: [:]][modelID]
+                ?? TokenConsumptionDayModel(providerID: event.providerID, model: modelName)
+            dayModel.tokens += event.totals.tokenCount
+            if isPriced { dayModel.estimatedUSD = (dayModel.estimatedUSD ?? 0) + amount }
+            dayModels[day, default: [:]][modelID] = dayModel
             dayTokens[day, default: 0] += event.totals.tokenCount
             dayCalls[day, default: 0] += 1
             dayUSD[day, default: 0] += amount
@@ -372,7 +399,10 @@ enum TokenConsumptionAggregator {
                 tokenCount: tokens,
                 calls: dayCalls[day] ?? 0,
                 estimatedUSD: pricedCount > 0 ? dayUSD[day] : nil,
-                pricedEventCount: pricedCount
+                pricedEventCount: pricedCount,
+                models: (dayModels[day] ?? [:]).values.sorted {
+                    $0.tokens == $1.tokens ? $0.id < $1.id : $0.tokens > $1.tokens
+                }
             )
         }
 

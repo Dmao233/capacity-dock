@@ -12,6 +12,12 @@ struct CapacityDockApp: App {
         Settings {
             EmptyView()
         }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Usage overview") { appDelegate.openUsageDetails() }
+                    .keyboardShortcut("1", modifiers: .command)
+            }
+        }
     }
 }
 
@@ -24,8 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private var billPopover: NSPopover?
 
     private enum BillPopoverMetrics {
-        static let width: CGFloat = 360
-        static let height: CGFloat = 640
+        static let width: CGFloat = 420
+        static let height: CGFloat = 660
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -215,6 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         // the old titled bill window did. The popover takes key focus itself.
         refreshStatusButton()
         statusItem?.length = max(button.bounds.width, 1)
+        // Give the accessory app focus before presenting its transient panel,
+        // so the first control click is not consumed by application activation.
+        NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         if let window = popover.contentViewController?.view.window {
             window.level = .statusBar
@@ -265,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         popover.animates = true
         popover.delegate = self
         popover.contentViewController = NSHostingController(
-            rootView: ConsumptionSettingsTab(compactLayout: true)
+            rootView: BillPopoverView()
                 .frame(width: BillPopoverMetrics.width, height: BillPopoverMetrics.height)
         )
         billPopover = popover
