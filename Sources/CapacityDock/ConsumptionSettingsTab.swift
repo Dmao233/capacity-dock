@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ConsumptionSettingsTab: View {
     var compactLayout = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var period: TokenConsumptionPeriod = .today
     @State private var selectedProviderID = "all"
     @State private var snapshot: TokenConsumptionSnapshot?
@@ -172,7 +173,7 @@ struct ConsumptionSettingsTab: View {
                     .help(NSLocalizedString("Logs exist, but this period has no token events.", comment: ""))
             case .billed:
                 HStack(alignment: .firstTextBaseline, spacing: 16) {
-                    Text(TokenConsumptionPresentation.heroAmount(totals, currency: currency) ?? "")
+                    animatedHeroAmount(totals, snapshot: snapshot)
                         .font(.system(size: compactLayout ? 28 : 32, weight: .semibold))
                         .monospacedDigit()
                         .lineLimit(1)
@@ -226,6 +227,35 @@ struct ConsumptionSettingsTab: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func animatedHeroAmount(
+        _ totals: TokenConsumptionPeriodTotals,
+        snapshot: TokenConsumptionSnapshot
+    ) -> some View {
+        let text = TokenConsumptionPresentation.heroAmount(totals, currency: currency) ?? ""
+        let value = currency.convert(totals.estimatedUSD ?? 0)
+        return Text(text)
+            .contentTransition(reduceMotion ? .identity : .numericText(value: value))
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: text)
+            // New comparison contexts mount at their final value. Only updates
+            // within the same context animate; warmHero also stays static.
+            .id(HeroAmountContext(
+                period: snapshot.period,
+                start: snapshot.window.start,
+                providerID: selectedProviderID,
+                currencyCode: currency.code,
+                exchangeRate: currency.rate
+            ))
+            .accessibilityLabel(text)
+    }
+
+    private struct HeroAmountContext: Hashable {
+        let period: TokenConsumptionPeriod
+        let start: Date
+        let providerID: String
+        let currencyCode: String
+        let exchangeRate: Double
     }
 
     @ViewBuilder
