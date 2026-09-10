@@ -140,6 +140,10 @@ Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. 
 
 Currency changes only affect display; source estimates remain in USD. Non-USD displays use exchange rates. If a rate cannot be fetched and no cached rate is available, the previous currency stays selected with an error message. Currency selection also updates the currency fields in `~/.config/codeburn/config.json`, preserving other settings for use alongside CodeBurn.
 
+## Running task details (development, unreleased)
+
+The widget detail card includes all detected running tasks and their count. Active cards widen slightly and wrap task titles. Height follows measured content, with vertical scrolling when the card reaches the available screen height. The card returns to its compact size when tasks finish. One shared activity animation avoids adding continuous animations for every task.
+
 ## API balances (development, unreleased)
 
 Add a DeepSeek account or custom relay under **API 账户** in Settings. Saving stores the key in macOS Keychain and queries the configured balance endpoint. Leave the key empty when editing to retain it; changing the endpoint requires entering the destination's key again.

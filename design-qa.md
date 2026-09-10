@@ -47,3 +47,11 @@ final result: validated with the limitations above
 - `Scripts/package-app.sh 0.3.2-dev`: universal build/package succeeded. Installed ZIP extraction passes strict/deep codesign verification; architectures are arm64 and x86_64.
 - CUA confirmed the new API account sidebar entry in the running Settings window. Further visual review was interrupted by user interaction; no claim of full live-account UI verification.
 - No existing grok-app credential was read or imported. Real DeepSeek / relay balance queries remain pending credentials entered by the user in the application; specific relay protocol compatibility depends on its API documentation.
+
+## Flexible running-task card — 2026-09-10
+
+- Removed the three-task truncation at both snapshot and view boundaries. Active cards widen to 340 pt at 100%, titles wrap, and the card measures its content before fitting to the target screen; excess content scrolls. Empty task lists return to the compact card.
+- Task rows share one activity animation, and unchanged task snapshots no longer write view state. Local activity polling frequency and log readers are unchanged.
+- `swift test -c release`: 203 tests in 20 suites passed. New checks cover retaining 25 tasks, wrapped-content height, constrained screens, and idle/active widths.
+- Universal `0.3.2-dev` packaging and installed ZIP-extraction strict/deep signature verification passed; canonical application restarted with one instance.
+- CUA could capture the rail but not reliably the transient detail card. Live multi-task scrolling and long-title visual acceptance remain for user testing; automated layout checks are not presented as full visual verification.

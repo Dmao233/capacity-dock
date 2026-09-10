@@ -18,7 +18,6 @@ struct CapacityDockActiveTask: Equatable, Identifiable, Sendable {
 
 enum CapacityDockActiveTaskSnapshot {
     static let liveWindow: TimeInterval = 90
-    static let maxTasks = 3
 
     struct Deps: Sendable {
         var now: @Sendable () -> Date
@@ -39,7 +38,7 @@ enum CapacityDockActiveTaskSnapshot {
         for provider: CapacityDockProvider,
         deps: Deps = .live
     ) -> [CapacityDockActiveTask] {
-        Array(deps.loadTasks(provider.id, deps.now()).prefix(maxTasks))
+        deps.loadTasks(provider.id, deps.now())
     }
 }
 

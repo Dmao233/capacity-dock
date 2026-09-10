@@ -275,6 +275,12 @@ final class CapacityDockController {
             },
             onConnect: { [weak self] provider in
                 self?.connect(provider)
+            },
+            onContentHeightChange: { [weak self] provider, height in
+                guard let self, self.model.hoveredProvider == provider,
+                      self.model.detailContentHeight != height else { return }
+                self.model.detailContentHeight = height
+                self.layoutDetail(for: provider, transaction: .immediate)
             }
         )
         let panel = CapacityDockPanel()
@@ -731,12 +737,18 @@ final class CapacityDockController {
     }
 
     private func applyDetailHeight(for provider: CapacityDockProvider) {
-        model.detailHeight = CapacityDockMetrics.detailHeight(
+        if let height = model.detailContentHeight {
+            model.detailHeight = CapacityDockMetrics.fittedDetailHeight(
+                contentHeight: height, scale: model.detailScale, tailEdge: model.detailTailEdge,
+                availableHeight: model.detailMaximumSize.height)
+            return
+        }
+        model.detailHeight = min(model.detailMaximumSize.height, CapacityDockMetrics.detailHeight(
             quota: store.capacityDockQuotaSummary(for: provider),
             activeTaskCount: model.activeTasks.count,
             activeTaskWorkspaceCount: model.activeTasks.filter { $0.workspace != nil }.count,
             scale: model.detailScale
-        )
+        ))
     }
 
     private func startActiveTaskMonitoring() {
@@ -768,9 +780,8 @@ final class CapacityDockController {
             }.value
             guard let self, generation == self.activeTaskGeneration else { return }
             guard self.model.hoveredProvider == provider else { return }
-            let changed = self.model.activeTasks != tasks
-            self.model.activeTasks = tasks
-            if changed {
+            if self.model.activeTasks != tasks {
+                self.model.activeTasks = tasks
                 self.applyDetailHeight(for: provider)
                 self.layoutDetail(for: provider, transaction: .immediate)
             }
@@ -816,6 +827,7 @@ final class CapacityDockController {
               model.preferences.selectedProviders.contains(provider) else { return }
         let wasShowingDetail = detailPanel?.isVisible == true && model.hoveredProvider != nil
         detailIsDismissing = false
+        if model.hoveredProvider != provider { model.detailContentHeight = nil }
         model.hoveredProvider = provider
         // Clear the previous provider's task rows before sizing the new card.
         startActiveTaskMonitoring()
@@ -1278,6 +1290,10 @@ final class CapacityDockController {
             preferredEdge: model.attachmentEdge
         )
         model.detailTailEdge = side.opposite
+        let available = CGSize(width: max(0, screen.visibleFrame.width - CapacityDockPlacement.detailInset * 2),
+                               height: max(0, screen.visibleFrame.height - CapacityDockPlacement.detailInset * 2))
+        if model.detailMaximumSize != available { model.detailMaximumSize = available }
+        applyDetailHeight(for: provider)
         let target = CapacityDockPlacement.detailFrame(
             size: CGSize(width: model.detailWidth, height: model.detailHeight),
             railFrame: railPanel.frame,

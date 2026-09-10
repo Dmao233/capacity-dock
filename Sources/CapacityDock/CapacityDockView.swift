@@ -51,7 +51,15 @@ enum CapacityDockMetrics {
     static func ringLabelSpacing(scale: CGFloat) -> CGFloat { points(baseRingLabelSpacing, scale) }
     static func providerIconSize(scale: CGFloat) -> CGFloat { points(baseProviderIconSize, scale) }
     static func percentageTextSize(scale: CGFloat) -> CGFloat { points(basePercentageTextSize, scale) }
-    static func detailWidth(scale: CGFloat) -> CGFloat { points(baseDetailWidth, scale) }
+    static func detailWidth(scale: CGFloat, hasTasks: Bool = false) -> CGFloat {
+        points(baseDetailWidth + (hasTasks ? 60 : 0), scale)
+    }
+
+    static func fittedDetailHeight(contentHeight: CGFloat, scale: CGFloat, tailEdge: CapacityDockEdge,
+                                   availableHeight: CGFloat) -> CGFloat {
+        let padding = (32 + (tailEdge.isVertical ? 0 : 18)) * scale
+        return min(ceil(contentHeight + padding), max(0, availableHeight)).rounded(.down)
+    }
     static func settingsCapGap(scale: CGFloat) -> CGFloat { points(baseSettingsCapGap, scale) }
     static func settingsCapDetachedGap(scale: CGFloat) -> CGFloat {
         points(baseSettingsCapDetachedGap, scale)
@@ -96,13 +104,10 @@ enum CapacityDockMetrics {
         case .loading, .stale, .transientFailure: 16
         case .connected: 0
         }
-        let taskCount = min(max(activeTaskCount, 0), CapacityDockActiveTaskSnapshot.maxTasks)
+        let taskCount = max(activeTaskCount, 0)
         let workspaceLines = min(max(activeTaskWorkspaceCount, 0), taskCount)
         let taskExtra: CGFloat = taskCount == 0 ? 0 : 10 + CGFloat(taskCount) * 18 + CGFloat(workspaceLines) * 12
-        let base = min(
-            470,
-            max(132, 88 + CGFloat(rows) * 62 + CGFloat(footer) + actionExtra + connectionExtra + taskExtra)
-        )
+        let base = max(132, 88 + CGFloat(rows) * 62 + CGFloat(footer) + actionExtra + connectionExtra + taskExtra)
         return base * scale
     }
 }
@@ -116,6 +121,8 @@ final class CapacityDockViewModel {
     var highlightedProvider: CapacityDockProvider?
     var activeTasks: [CapacityDockActiveTask] = []
     var detailHeight: CGFloat = 164
+    var detailContentHeight: CGFloat?
+    var detailMaximumSize = CGSize(width: 2_000, height: 800)
     var isRailPresentationExpanded = false
     var railPresentationProgress: CGFloat = 0
     var isRailMotionActive = false
@@ -454,7 +461,9 @@ final class CapacityDockViewModel {
         return max(base, nest + orb)
     }
     var railCrossPad: CGFloat { CapacityDockMetrics.railCrossPad(scale: scale) }
-    var detailWidth: CGFloat { CapacityDockMetrics.detailWidth(scale: detailScale) }
+    var detailWidth: CGFloat {
+        min(CapacityDockMetrics.detailWidth(scale: detailScale, hasTasks: !activeTasks.isEmpty), detailMaximumSize.width)
+    }
 
     var presentationReveal: CGFloat {
         min(
@@ -1221,10 +1230,18 @@ enum CapacityDockQuotaPresentation {
     }
 }
 
+private struct CapacityDockDetailContentHeight: PreferenceKey {
+    static let defaultValue: [String: CGFloat] = [:]
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
 struct CapacityDockDetailView: View {
     let model: CapacityDockViewModel
     let quota: (CapacityDockProvider) -> QuotaSummary?
     let onConnect: (CapacityDockProvider) -> Void
+    let onContentHeightChange: (CapacityDockProvider, CGFloat) -> Void
 
     var body: some View {
         let _ = model.quotaEpoch
@@ -1232,9 +1249,24 @@ struct CapacityDockDetailView: View {
             tailEdge: model.detailTailEdge,
             tailPosition: model.detailTailPosition
         )
-        Group {
+        ScrollView(.vertical) {
             if let provider = model.hoveredProvider {
                 detail(for: provider, quota: quota(provider))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear.preference(key: CapacityDockDetailContentHeight.self,
+                                                   value: [provider.id: ceil(geometry.size.height)])
+                        }
+                    }
+                    .id(provider.id)
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .onPreferenceChange(CapacityDockDetailContentHeight.self) { heights in
+            if let provider = model.hoveredProvider, let height = heights[provider.id], height.isFinite, height > 0 {
+                onContentHeightChange(provider, height)
             }
         }
         .padding(detailInsets)
@@ -1310,9 +1342,15 @@ struct CapacityDockDetailView: View {
                             .foregroundStyle(Color.capacityDockText.opacity(0.58))
                     }
                 }
-                let liveTasks = Array(model.activeTasks.prefix(CapacityDockActiveTaskSnapshot.maxTasks))
+                let liveTasks = model.activeTasks
                 if !liveTasks.isEmpty {
-                    VStack(alignment: .leading, spacing: 6 * model.detailScale) {
+                    VStack(alignment: .leading, spacing: 8 * model.detailScale) {
+                        HStack(spacing: 7 * model.detailScale) {
+                            CapacityDockLiveDot(size: 8 * model.detailScale)
+                            Text(String(format: NSLocalizedString("%d running tasks", comment: ""), liveTasks.count))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(Color.capacityDockText.opacity(0.62))
+                        }
                         ForEach(liveTasks) { task in
                             CapacityDockActiveTaskRow(
                                 task: task,
@@ -1391,21 +1429,23 @@ private struct CapacityDockActiveTaskRow: View {
     let scale: CGFloat
 
     var body: some View {
-        HStack(alignment: .center, spacing: 7 * scale) {
-            CapacityDockLiveDot(size: 8 * scale)
+        HStack(alignment: .top, spacing: 7 * scale) {
+            Circle().fill(Color.green.opacity(0.75))
+                .frame(width: 4 * scale, height: 4 * scale)
+                .padding(.horizontal, 2 * scale).padding(.top, 5 * scale)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1 * scale) {
                 if let workspace = task.workspace {
                     Text(workspace)
                         .font(.system(size: 9))
                         .foregroundStyle(Color.capacityDockText.opacity(0.5))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Text(task.title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.capacityDockText.opacity(0.88))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .help(helpText)
         }

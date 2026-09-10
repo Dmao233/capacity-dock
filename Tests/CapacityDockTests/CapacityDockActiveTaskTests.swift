@@ -592,6 +592,32 @@ struct CapacityDockActiveTaskTests {
         #expect(CapacityDockActiveTaskSnapshot.tasks(for: Self.codex, deps: deps).isEmpty)
     }
 
+    @Test("snapshot retains every running task, including those beyond the old three-row cap")
+    func snapshotRetainsAllTasks() {
+        let tasks = (0..<25).map { CapacityDockActiveTask(id: "task-\($0)", title: "Running task \($0)") }
+        let deps = CapacityDockActiveTaskSnapshot.Deps(now: Date.init, loadTasks: { _, _ in tasks })
+        #expect(CapacityDockActiveTaskSnapshot.tasks(for: Self.codex, deps: deps) == tasks)
+    }
+
+    @Test("measured cards grow for wrapped text, scroll at screen bounds, and shrink again")
+    func measuredCardFitsContentAndScreen() {
+        let compact = CapacityDockMetrics.fittedDetailHeight(contentHeight: 160, scale: 1, tailEdge: .right, availableHeight: 700)
+        let wrapped = CapacityDockMetrics.fittedDetailHeight(contentHeight: 420, scale: 1, tailEdge: .right, availableHeight: 700)
+        let crowded = CapacityDockMetrics.fittedDetailHeight(contentHeight: 1_200, scale: 1, tailEdge: .right, availableHeight: 700)
+        #expect(compact == 192)
+        #expect(wrapped == 452)
+        #expect(crowded == 700)
+        #expect(CapacityDockMetrics.fittedDetailHeight(contentHeight: 160, scale: 1, tailEdge: .bottom, availableHeight: 700) == 210)
+        #expect(CapacityDockMetrics.fittedDetailHeight(contentHeight: 1_200, scale: 0.9, tailEdge: .top, availableHeight: 384) == 384)
+    }
+
+    @Test("task cards widen without changing the idle card width")
+    func activeCardWidth() {
+        #expect(CapacityDockMetrics.detailWidth(scale: 1) == 280)
+        #expect(CapacityDockMetrics.detailWidth(scale: 1, hasTasks: true) == 340)
+        #expect(CapacityDockMetrics.detailWidth(scale: 0.9, hasTasks: true) == 306)
+    }
+
     @Test("live task rows grow the detail card")
     func liveTasksGrowDetailHeight() {
         let quota = QuotaSummary(
