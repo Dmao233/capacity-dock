@@ -100,7 +100,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.1
+Scripts/package-app.sh 0.3.2
 open .build/dist/CapacityDock.app
 ```
 
@@ -140,11 +140,11 @@ swift run
 
 币种仅影响显示，原始估算保持 USD。非 USD 币种需要汇率；无可用缓存且汇率获取失败时保持原币种并提示。选择币种还会同步到 `~/.config/codeburn/config.json` 的币种字段，方便与 CodeBurn 配合使用，保留该文件的其他设置。
 
-## 运行任务详情（开发版，尚未发布）
+## 运行任务详情（0.3.2）
 
 小工具详情展示所有检测到的运行任务及总数。有任务时卡片适当加宽，任务标题自动换行；卡片按实际内容增高，超过屏幕可用高度后可滚动查看。任务结束后恢复紧凑尺寸，不保留空白。仅任务区标题显示一个活动动画，避免随任务数量增加持续动画。
 
-## API 余额（开发版，尚未发布）
+## API 余额（0.3.2）
 
 在设置的 **API 账户** 中点击“添加账户”，在弹出的窗口填写 DeepSeek 官方账户或自定义中转站，再点“保存并查询”。取消不会创建账户；编辑也在独立窗口中进行。保存时将密钥写入 macOS 钥匙串，并开始查询余额；编辑时密钥留空保留，改变接口地址必须重新填写密钥。
 

@@ -100,7 +100,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.1
+Scripts/package-app.sh 0.3.2
 open .build/dist/CapacityDock.app
 ```
 
@@ -140,11 +140,11 @@ Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. 
 
 Currency changes only affect display; source estimates remain in USD. Non-USD displays use exchange rates. If a rate cannot be fetched and no cached rate is available, the previous currency stays selected with an error message. Currency selection also updates the currency fields in `~/.config/codeburn/config.json`, preserving other settings for use alongside CodeBurn.
 
-## Running task details (development, unreleased)
+## Running task details (0.3.2)
 
 The widget detail card includes all detected running tasks and their count. Active cards widen slightly and wrap task titles. Height follows measured content, with vertical scrolling when the card reaches the available screen height. The card returns to its compact size when tasks finish. One shared activity animation avoids adding continuous animations for every task.
 
-## API balances (development, unreleased)
+## API balances (0.3.2)
 
 Under **API 账户** in Settings, click **添加账户** to open the account editor, fill in a DeepSeek account or custom relay, then click **保存并查询**. Cancel creates no account; editing also opens this separate sheet. Saving stores the key in macOS Keychain and queries the configured balance endpoint. Leave the key empty when editing to retain it; changing the endpoint requires entering the destination's key again.
 
@@ -158,7 +158,7 @@ Under **API 账户** in Settings, click **添加账户** to open the account edi
 - Refreshes approximately every minute, backing off to five minutes on failure. `↻` marks the previous balance; expand the balance strip for timestamps and errors. Failures never become zero.
 - Small separate caches, coalesced serial refreshes, a 15-second request timeout, a 256 KiB response limit, and no credential forwarding on redirects. Balance refreshes do not rescan token logs.
 
-This development version reads balances. It does not infer actual spending from balance changes or implement relay historical debit ledgers.
+This version reads balances. It does not infer actual spending from balance changes or implement relay historical debit ledgers.
 
 ## Quota data
 
