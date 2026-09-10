@@ -7,6 +7,30 @@ struct CapacityDockPlacementTests {
     private let visibleFrame = CGRect(x: 0, y: 0, width: 1440, height: 900)
     private let railSize = CGSize(width: 76, height: 100)
 
+    @Test("context menus keep their full width and height at every display edge")
+    func contextMenuFitsScreenEdges() {
+        let size = CGSize(width: 220, height: 160)
+        for screen in [visibleFrame, CGRect(x: -1920, y: -200, width: 1920, height: 1080)] {
+            for point in [CGPoint(x: screen.minX, y: screen.midY), CGPoint(x: screen.maxX - 1, y: screen.midY),
+                          CGPoint(x: screen.midX, y: screen.minY), CGPoint(x: screen.midX, y: screen.maxY)] {
+                let origin = CapacityDockPlacement.contextMenuOrigin(at: point, menuSize: size, visibleFrame: screen)
+                let frame = CGRect(x: origin.x, y: origin.y - size.height, width: size.width, height: size.height)
+                #expect(screen.insetBy(dx: 8, dy: 8).contains(frame))
+            }
+        }
+    }
+
+    @Test("context menu opens left of a right-edge click and preserves interior anchors")
+    func contextMenuDirection() {
+        let size = CGSize(width: 220, height: 160)
+        let rightClick = CGPoint(x: 1410, y: 600)
+        let rightMenu = CapacityDockPlacement.contextMenuOrigin(at: rightClick, menuSize: size, visibleFrame: visibleFrame)
+        #expect(rightMenu.x + size.width <= rightClick.x)
+        #expect(rightMenu.y == rightClick.y)
+        let middle = CGPoint(x: 600, y: 500)
+        #expect(CapacityDockPlacement.contextMenuOrigin(at: middle, menuSize: size, visibleFrame: visibleFrame) == middle)
+    }
+
     @Test("default placement uses the notification-safe upper-right lane")
     func defaultPlacement() {
         let frame = CapacityDockPlacement.railFrame(

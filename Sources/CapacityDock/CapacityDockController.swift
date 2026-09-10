@@ -340,6 +340,8 @@ final class CapacityDockController {
             matching: [.leftMouseDown, .rightMouseDown, .keyDown, .mouseMoved]
         ) { [weak self] event in
             guard let self else { return event }
+            // AppKit owns clicks and Escape while its menu is tracking.
+            guard !self.isPresentingRailMenu else { return event }
             if event.type == .mouseMoved {
                 let point = NSEvent.mouseLocation
                 self.updateMouseEventPassthrough(at: point)
@@ -404,6 +406,7 @@ final class CapacityDockController {
     /// monitor turns interaction back on as soon as the pointer reaches the
     /// visible silhouette again.
     private func updateMouseEventPassthrough(at point: CGPoint = NSEvent.mouseLocation) {
+        guard !isPresentingRailMenu else { return }
         let dragging = model.interaction.isDragging
         if let railPanel {
             let shouldIgnore = railPanel.isVisible
@@ -526,6 +529,7 @@ final class CapacityDockController {
     }
 
     private func railHoverChanged(_ hovering: Bool) {
+        guard !isPresentingRailMenu else { return }
         pointerInsideRail = hovering
         guard model.interaction.acceptsHoverTransitions else { return }
         expansionWork?.cancel()
@@ -550,7 +554,7 @@ final class CapacityDockController {
     }
 
     private func providerHoverChanged(_ provider: CapacityDockProvider, hovering: Bool) {
-        guard model.interaction.acceptsHoverTransitions else { return }
+        guard !isPresentingRailMenu, model.interaction.acceptsHoverTransitions else { return }
         detailWork?.cancel()
         detailExitWork?.cancel()
 
@@ -590,7 +594,7 @@ final class CapacityDockController {
     }
 
     private func detailHoverChanged(_ hovering: Bool) {
-        guard model.interaction.acceptsHoverTransitions else { return }
+        guard !isPresentingRailMenu, model.interaction.acceptsHoverTransitions else { return }
         collapseWork?.cancel()
         detailExitWork?.cancel()
         model.interaction.setDetailHovered(hovering)
@@ -609,7 +613,7 @@ final class CapacityDockController {
     }
 
     private func settingsCapHoverChanged(_ hovering: Bool) {
-        guard model.interaction.acceptsHoverTransitions else { return }
+        guard !isPresentingRailMenu, model.interaction.acceptsHoverTransitions else { return }
         collapseWork?.cancel()
         detailWork?.cancel()
         model.interaction.setSettingsHovered(hovering)
@@ -632,12 +636,22 @@ final class CapacityDockController {
     }
 
     private func presentRailContextMenu(at screenPoint: CGPoint) {
-        guard let railPanel, let contentView = railPanel.contentView else { return }
+        guard !isPresentingRailMenu, !model.interaction.isDragging,
+              let railPanel,
+              let screen = NSScreen.screens.first(where: { $0.frame.contains(screenPoint) }) ?? railPanel.screen else { return }
         isPresentingRailMenu = true
         collapseWork?.cancel()
         expansionWork?.cancel()
+        detailWork?.cancel()
+        detailWork = nil
+        detailExitWork?.cancel()
+        extraRevealSettleWork?.cancel()
+        stopRailMotion()
+        hideDetail(animated: false)
+        pointerInsideDetail = false
 
         let menu = NSMenu()
+        menu.minimumWidth = 200
         var proxies: [CapacityDockRailMenuProxy] = []
         func addItem(
             _ title: String,
@@ -681,22 +695,28 @@ final class CapacityDockController {
         menu.addItem(addItem("Hide Capacity Dock") { [weak self] in self?.hideDock() })
 
         railMenuProxies = proxies
-        let local = contentView.convert(railPanel.convertPoint(fromScreen: screenPoint), from: nil)
+        menu.update()
+        let origin = CapacityDockPlacement.contextMenuOrigin(
+            at: screenPoint, menuSize: menu.size, visibleFrame: screen.visibleFrame)
         // Shielding-level dock panels must not cover AppKit's menu windows.
         let railLevel = railPanel.level
         let detailLevel = detailPanel?.level
         railPanel.level = .floating
         detailPanel?.level = .floating
-        menu.popUp(positioning: nil, at: local, in: contentView)
-        railPanel.level = railLevel
-        if let detailLevel { detailPanel?.level = detailLevel }
-        railMenuProxies = []
-        isPresentingRailMenu = false
-        updateMouseEventPassthrough()
-        syncPointerHover()
-        if model.interaction.canCollapse {
-            scheduleCollapse()
+        defer {
+            railPanel.level = railLevel
+            if let detailLevel { detailPanel?.level = detailLevel }
+            railMenuProxies = []
+            isPresentingRailMenu = false
+            hoveredRailItem = nil
+            layoutRail(animate: false)
+            updateMouseEventPassthrough()
+            syncPointerHover()
+            if model.interaction.canCollapse { scheduleCollapse() }
         }
+        // A screen-space menu is independent of the narrow, morphing host view.
+        // Reserve its full width inside the display before AppKit starts tracking.
+        menu.popUp(positioning: nil, at: origin, in: nil)
     }
 
     private func toggleKeepExpanded() {
@@ -718,7 +738,7 @@ final class CapacityDockController {
     }
 
     private func providerClicked(_ provider: CapacityDockProvider) {
-        guard !model.interaction.isDragging else { return }
+        guard !isPresentingRailMenu, !model.interaction.isDragging else { return }
         guard ProcessInfo.processInfo.systemUptime >= suppressProviderClicksUntil else { return }
         expansionWork?.cancel()
         collapseWork?.cancel()
@@ -826,7 +846,7 @@ final class CapacityDockController {
         for provider: CapacityDockProvider,
         transaction: CapacityDockMotion.Transaction? = nil
     ) {
-        guard model.preferences.isEnabled,
+        guard !isPresentingRailMenu, model.preferences.isEnabled,
               model.preferences.selectedProviders.contains(provider) else { return }
         let wasShowingDetail = detailPanel?.isVisible == true && model.hoveredProvider != nil
         detailIsDismissing = false
@@ -883,6 +903,7 @@ final class CapacityDockController {
     }
 
     private func scheduleCollapse() {
+        guard !isPresentingRailMenu else { return }
         collapseWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -1116,7 +1137,7 @@ final class CapacityDockController {
     }
 
     private func layoutRail(preserveCurrentTop: Bool = true, animate: Bool = true) {
-        guard let railPanel, let screen = targetScreen else { return }
+        guard !isPresentingRailMenu, let railPanel, let screen = targetScreen else { return }
         let wantsExpandedPresentation = model.wantsExpandedRail
         let expanding = wantsExpandedPresentation && !model.isRailPresentationExpanded
         let collapsing = !wantsExpandedPresentation && model.isRailPresentationExpanded

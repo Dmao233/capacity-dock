@@ -74,6 +74,17 @@ enum CapacityDockPlacement {
         frames.firstIndex { $0.contains(point) }
     }
 
+    /// NSMenu uses a top-left anchor in AppKit screen coordinates (Y increases up).
+    /// A right-edge click must open to its left instead of squeezing into the remaining strip.
+    static func contextMenuOrigin(at point: CGPoint, menuSize: CGSize, visibleFrame: CGRect) -> CGPoint {
+        let bounds = visibleFrame.insetBy(dx: 8, dy: 8)
+        let x = point.x + menuSize.width <= bounds.maxX ? point.x : point.x - menuSize.width
+        return CGPoint(
+            x: min(max(x, bounds.minX), max(bounds.minX, bounds.maxX - menuSize.width)),
+            y: min(max(point.y, bounds.minY + menuSize.height), bounds.maxY)
+        )
+    }
+
     static func railFrame(
         screenFrame: CGRect,
         visibleFrame: CGRect,
