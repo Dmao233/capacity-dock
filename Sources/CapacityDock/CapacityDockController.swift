@@ -277,7 +277,7 @@ final class CapacityDockController {
                 self?.connect(provider)
             },
             onContentHeightChange: { [weak self] provider, height in
-                guard let self, self.model.hoveredProvider == provider,
+                guard let self, !self.detailIsDismissing, self.model.hoveredProvider == provider,
                       self.model.detailContentHeight != height else { return }
                 self.model.detailContentHeight = height
                 self.layoutDetail(for: provider, transaction: .immediate)
@@ -737,6 +737,7 @@ final class CapacityDockController {
     }
 
     private func applyDetailHeight(for provider: CapacityDockProvider) {
+        guard !detailIsDismissing else { return }
         if let height = model.detailContentHeight {
             model.detailHeight = CapacityDockMetrics.fittedDetailHeight(
                 contentHeight: height, scale: model.detailScale, tailEdge: model.detailTailEdge,
@@ -841,6 +842,10 @@ final class CapacityDockController {
     }
 
     private func hideDetail(animated: Bool = true) {
+        // Freeze content layout before clearing tasks: their geometry callback
+        // must not cancel the fade and restore alpha to 1. Repeated exits join it.
+        if animated && detailIsDismissing { return }
+        detailIsDismissing = animated && model.hoveredProvider != nil && detailPanel?.isVisible == true
         stopActiveTaskMonitoring()
         let provider = model.hoveredProvider
         model.interaction.setDetailHovered(false)
@@ -1273,7 +1278,8 @@ final class CapacityDockController {
         for provider: CapacityDockProvider,
         transaction: CapacityDockMotion.Transaction = .detailFollow
     ) {
-        guard let detailPanel, let railPanel, let screen = targetScreen,
+        guard !detailIsDismissing, model.hoveredProvider == provider,
+              let detailPanel, let railPanel, let screen = targetScreen,
               let index = model.displayedRailItems.firstIndex(of: .provider(provider)) else { return }
         let frames = model.orbFrames(in: CGRect(origin: .zero, size: railPanel.frame.size))
         guard frames.indices.contains(index) else { return }

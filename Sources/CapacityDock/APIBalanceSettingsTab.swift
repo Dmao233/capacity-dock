@@ -2,11 +2,9 @@ import SwiftUI
 
 struct APIBalanceSettingsTab: View {
     @State private var store = APIBalanceStore.shared
-    @State private var draft = APIBalanceAccount()
-    @State private var key = ""
+    @State private var editorAccount: APIBalanceAccount?
     @State private var error: String?
     @State private var saving = false
-    @State private var editing = false
 
     var body: some View {
         Form {
@@ -47,14 +45,13 @@ struct APIBalanceSettingsTab: View {
                                 .font(.caption).foregroundStyle(.orange)
                         }
                         HStack {
-                            Button("编辑") { draft = account; key = ""; error = nil; editing = true }
+                            Button("编辑") { error = nil; editorAccount = account }
                             Button("移除", role: .destructive) {
                                 saving = true
                                 Task { @MainActor in
                                     defer { saving = false }
                                     do {
                                         try await store.remove(account)
-                                        if draft.id == account.id { draft = APIBalanceAccount(); editing = false; key = "" }
                                     } catch { self.error = error.localizedDescription }
                                 }
                             }
@@ -65,17 +62,51 @@ struct APIBalanceSettingsTab: View {
                     Button(store.isRefreshing ? "正在更新…" : "刷新余额") { store.refresh(force: true) }
                         .disabled(store.isRefreshing || store.accounts.isEmpty)
                     Spacer()
-                    Button("添加账户") { draft = APIBalanceAccount(); key = ""; error = nil; editing = false }
+                    Button("添加账户") { error = nil; editorAccount = APIBalanceAccount() }
                 }
             } header: { Text("已添加的账户") }
-            Section {
+            if let error {
+                Section { Text(error).foregroundStyle(.orange).font(.callout) }
+            }
+        }
+        .disabled(saving)
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .sheet(item: $editorAccount) { account in
+            APIBalanceAccountEditor(account: account, editing: store.accounts.contains { $0.id == account.id })
+        }
+    }
+}
+
+private struct APIBalanceAccountEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: APIBalanceAccount
+    @State private var key = ""
+    @State private var error: String?
+    @State private var saving = false
+    @FocusState private var keyFocused: Bool
+    let editing: Bool
+
+    init(account: APIBalanceAccount, editing: Bool) {
+        _draft = State(initialValue: account)
+        self.editing = editing
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(editing ? "编辑 API 账户" : "添加 API 账户")
+                .font(.title3.weight(.semibold))
+            Form {
                 Picker("平台类型", selection: $draft.kind) {
                     Text("DeepSeek 官方").tag(APIBalanceAccount.Kind.deepSeek)
                     Text("自定义中转站").tag(APIBalanceAccount.Kind.relay)
-                }.onChange(of: draft.kind) { _, kind in
-                    if !editing { draft.name = kind == .deepSeek ? "DeepSeek" : "自定义中转站" }
+                }.onChange(of: draft.kind) { old, kind in
+                    let previousDefault = old == .deepSeek ? "DeepSeek" : "自定义中转站"
+                    if !editing && draft.name == previousDefault {
+                        draft.name = kind == .deepSeek ? "DeepSeek" : "自定义中转站"
+                    }
                 }
-                TextField("账户名称", text: $draft.name)
+                TextField("账户名称", text: $draft.name, prompt: Text("为这个账户命名"))
                 if draft.kind == .deepSeek {
                     LabeledContent("余额接口", value: "api.deepseek.com/user/balance")
                 } else {
@@ -86,30 +117,46 @@ struct APIBalanceSettingsTab: View {
                     Text("GET 请求，使用 Authorization: Bearer 密钥。路径支持 data.balance、data.0.balance；以分为单位填除数 100，以元为单位填 1。请使用平台文档中的实际接口和单位。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                SecureField(editing ? "API 密钥（留空保留）" : "API 密钥", text: $key)
-                Text("密钥保存在 macOS 钥匙串，仅向上方余额接口发送。保存后开始查询余额。")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-                Button(saving ? "正在保存…" : "保存并查询") {
-                    saving = true
-                    error = nil
-                    let account = draft
-                    let credential = key
-                    Task { @MainActor in
-                        defer { saving = false }
-                        do {
-                            try await store.save(account, key: credential)
-                            key = ""
-                            editing = true
-                        } catch { self.error = error.localizedDescription }
-                    }
-                }
-            } header: { Text(editing ? "编辑账户" : "添加账户") }
+                SecureField(editing ? "API 密钥（留空保留）" : "API 密钥", text: $key,
+                            prompt: Text(editing ? "留空保留已保存的密钥" : "输入 API 密钥"))
+                    .focused($keyFocused)
+            }
+            .textFieldStyle(.roundedBorder)
+            .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
             .disabled(saving)
+            Text("密钥保存在 macOS 钥匙串，仅向上方余额接口发送。保存后开始查询余额。")
+                .font(.caption).foregroundStyle(.secondary)
+            if let error { Text(error).foregroundStyle(.orange).font(.callout).fixedSize(horizontal: false, vertical: true) }
+            HStack {
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(saving ? "正在保存…" : "保存并查询", action: save)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }.disabled(saving)
         }
-        .disabled(saving)
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
+        .padding(20)
+        .frame(width: 520, height: draft.kind == .deepSeek ? 390 : 560)
+        .interactiveDismissDisabled(saving)
+        .onAppear { if !editing { keyFocused = true } }
+    }
+
+    private func save() {
+        guard !saving else { return }
+        saving = true
+        error = nil
+        draft.currency = draft.currency.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let account = draft
+        let credential = key
+        Task { @MainActor in
+            defer { saving = false }
+            do {
+                try await APIBalanceStore.shared.save(account, key: credential)
+                key = ""
+                dismiss()
+            } catch { self.error = error.localizedDescription }
+        }
     }
 }
 

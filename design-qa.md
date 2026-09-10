@@ -55,3 +55,11 @@ final result: validated with the limitations above
 - `swift test -c release`: 203 tests in 20 suites passed. New checks cover retaining 25 tasks, wrapped-content height, constrained screens, and idle/active widths.
 - Universal `0.3.2-dev` packaging and installed ZIP-extraction strict/deep signature verification passed; canonical application restarted with one instance.
 - CUA could capture the rail but not reliably the transient detail card. Live multi-task scrolling and long-title visual acceptance remain for user testing; automated layout checks are not presented as full visual verification.
+
+## Account editor and dismiss race — 2026-09-10
+
+- Replaced the reset-only Add action and always-visible form with an item-bound sheet shared by Add and Edit. The sheet focuses a clearly outlined key field, keeps Save/Cancel visible, and presents validation errors locally.
+- Fixed the adaptive card regression: clearing active tasks during hide emitted a content-height callback, which called immediate layout and canceled the dismissal animation. Dismissal is now marked before task cleanup; layout/height callbacks ignore closing cards and repeated exits join the fade. Explicit re-entry still restores the card.
+- Existing `swift test -c release`: 203 tests in 20 suites passed. Universal packaging and installed ZIP-extraction strict/deep signature verification passed.
+- CUA verified Add opens the sheet, empty-key Save shows the required-key error, and Cancel returns to an unchanged empty account list. After subsequent user interaction, a DeepSeek balance was visibly present in the usage popover. No user key was entered or read by the agent.
+- Further CUA interaction stopped after user activity was detected. The mouse-leave dismissal path is source-verified; live hover-exit acceptance remains for the user.

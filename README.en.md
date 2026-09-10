@@ -146,7 +146,7 @@ The widget detail card includes all detected running tasks and their count. Acti
 
 ## API balances (development, unreleased)
 
-Add a DeepSeek account or custom relay under **API 账户** in Settings. Saving stores the key in macOS Keychain and queries the configured balance endpoint. Leave the key empty when editing to retain it; changing the endpoint requires entering the destination's key again.
+Under **API 账户** in Settings, click **添加账户** to open the account editor, fill in a DeepSeek account or custom relay, then click **保存并查询**. Cancel creates no account; editing also opens this separate sheet. Saving stores the key in macOS Keychain and queries the configured balance endpoint. Leave the key empty when editing to retain it; changing the endpoint requires entering the destination's key again.
 
 - A single account shows **provider icon remaining balance | ◉ today's existing cost estimate**. Without API accounts the menu bar stays unchanged.
 - The existing today / last seven days / month totals remain local-log API-equivalent estimates, not actual API debits. Balances are never added to those costs.
