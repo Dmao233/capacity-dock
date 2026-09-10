@@ -10,7 +10,7 @@ struct CapacityDockSettingsView: View {
     @State private var searchText = ""
     @State private var snapshot = CapacityDockPreferences.load()
 
-    private static let mainPaneIDs: Set<String> = ["general", "about", "usage"]
+    private static let mainPaneIDs: Set<String> = ["general", "about", "usage", "api-balance"]
     private static let windowWidth: CGFloat = 880
     private static let windowHeight: CGFloat = 620
     private static let sidebarWidth: CGFloat = 260
@@ -102,6 +102,7 @@ struct CapacityDockSettingsView: View {
                         systemImage: "info.circle.fill",
                         color: accent
                     )
+                    SettingsSidebarPaneRow(pane: "api-balance", title: "API 账户", systemImage: "creditcard.fill", color: accent)
                     SettingsSidebarPaneRow(
                         pane: "usage",
                         title: NSLocalizedString("Usage", comment: ""),
@@ -136,6 +137,7 @@ struct CapacityDockSettingsView: View {
         case "general": return NSLocalizedString("General", comment: "")
         case "about": return NSLocalizedString("About", comment: "")
         case "usage": return NSLocalizedString("Usage", comment: "")
+        case "api-balance": return "API 账户"
         default:
             return providers.first { $0.id == selection.wrappedValue }?.name
                 ?? NSLocalizedString("Capacity Dock Settings", comment: "")
@@ -147,6 +149,8 @@ struct CapacityDockSettingsView: View {
         switch selection.wrappedValue {
         case "about":
             AboutSettingsTab(store: store)
+        case "api-balance":
+            APIBalanceSettingsTab()
         case "usage":
             ConsumptionSettingsTab()
         case "general":

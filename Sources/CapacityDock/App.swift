@@ -47,13 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         installStatusItem()
         DisplayCurrencyState.shared.start()
         MenubarBillStore.shared.start()
+        APIBalanceStore.shared.start()
         refreshStatusButton()
         NotificationCenter.default.addObserver(
             forName: .capacityDockOpenProviderSettings,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] note in
+            let pane = note.object as? String
             Task { @MainActor in
+                if let pane { self?.store.settingsTab = pane }
                 self?.openSettings()
             }
         }
@@ -123,7 +126,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let badge = MenubarBillStore.shared.badge
         let currency = DisplayCurrencyState.shared.snapshot
         let font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        let composed = NSMutableAttributedString(string: "◉")
+        let composed = NSMutableAttributedString(string: "")
+        let apiBalances = APIBalanceStore.shared
+        if let balance = apiBalances.menuText {
+            let image: NSImage?
+            if apiBalances.accounts.count == 1, apiBalances.accounts.first?.kind == .deepSeek {
+                image = ProviderIconCache.image(named: "deepseek")
+            } else {
+                image = NSImage(systemSymbolName: apiBalances.accounts.count == 1 ? "server.rack" : "creditcard", accessibilityDescription: "API 余额")
+            }
+            if let image {
+                let attachment = NSTextAttachment()
+                attachment.image = image
+                attachment.bounds = NSRect(x: 0, y: -2, width: 16, height: 13)
+                composed.append(NSAttributedString(attachment: attachment))
+            }
+            composed.append(NSAttributedString(string: " \(balance) ｜ ", attributes: [.font: font]))
+        }
+        composed.append(NSAttributedString(string: "◉"))
         var textAttrs: [NSAttributedString.Key: Any] = [
             .font: font,
             .baselineOffset: -1.0
@@ -134,9 +154,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         composed.append(NSAttributedString(string: badge.menubarText(currency: currency), attributes: textAttrs))
         button.attributedTitle = composed
         button.setAccessibilityTitle(
-            NSLocalizedString("Capacity Dock", comment: "") + badge.menubarText(currency: currency)
+            NSLocalizedString("Capacity Dock", comment: "") + (apiBalances.menuText.map { " API 剩余 " + $0 + " 今日消耗 " } ?? "") + badge.menubarText(currency: currency)
         )
-        button.toolTip = NSLocalizedString("Usage details. Right-click for settings.", comment: "")
+        button.toolTip = NSLocalizedString("Usage details. Right-click for settings.", comment: "") + (apiBalances.accounts.isEmpty ? "" : "\nAPI 余额与本地日志估算分别显示；↻ 表示上次余额，详情查看更新时间。")
     }
 
     private func makeStatusMenu() -> NSMenu {

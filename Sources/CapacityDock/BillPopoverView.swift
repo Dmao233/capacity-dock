@@ -26,6 +26,7 @@ struct BillPopoverView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 12) {
                 header
+                APIBalanceSummary()
                 BillSegmentedControl(selection: $period,
                     items: TokenConsumptionPeriod.allCases.map { BillSegment(id: $0, title: LocalizedStringKey($0.title)) },
                     itemWidth: 62, accent: accent)

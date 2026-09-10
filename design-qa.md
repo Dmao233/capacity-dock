@@ -39,3 +39,11 @@
 截图和原始本机诊断不随公开仓库发布。设置消耗页的深色主题、侧栏、居中图表切换，以及今天 / 七天 / 本月数据已实机检查；周期按钮无障碍名称正确，Grok 连接状态已恢复。通用 / 关于 / 服务商复用根主题配置；右键菜单在不同停靠边缘和多屏下仍需更广泛人工验证。长期耐久测试未包含在上述验证中。
 
 final result: validated with the limitations above
+
+## API balance development pass — 2026-09-10
+
+- Added DeepSeek and explicit HTTPS GET / Bearer / JSON relay balance configuration. Existing local-log period estimates remain unchanged; no claim of actual API debits.
+- `swift test -c release`: 200 tests across 20 suites passed, including offline HTTP fixtures, invalid / absent balances, decimal unit conversion, currency aggregation and cache invalidation.
+- `Scripts/package-app.sh 0.3.2-dev`: universal build/package succeeded. Installed ZIP extraction passes strict/deep codesign verification; architectures are arm64 and x86_64.
+- CUA confirmed the new API account sidebar entry in the running Settings window. Further visual review was interrupted by user interaction; no claim of full live-account UI verification.
+- No existing grok-app credential was read or imported. Real DeepSeek / relay balance queries remain pending credentials entered by the user in the application; specific relay protocol compatibility depends on its API documentation.

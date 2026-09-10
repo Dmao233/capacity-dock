@@ -25,6 +25,7 @@ enum ProviderIconCache {
         "alibabatokenplan": "alibaba",
         "azureopenai": "codex",
         "codex": "codex",
+        "deepseek": "deepseek",
         "openai": "codex",
         "githubcopilot": "copilot",
         "googlegemini": "gemini",

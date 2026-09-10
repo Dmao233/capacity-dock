@@ -140,6 +140,21 @@ Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. 
 
 Currency changes only affect display; source estimates remain in USD. Non-USD displays use exchange rates. If a rate cannot be fetched and no cached rate is available, the previous currency stays selected with an error message. Currency selection also updates the currency fields in `~/.config/codeburn/config.json`, preserving other settings for use alongside CodeBurn.
 
+## API balances (development, unreleased)
+
+Add a DeepSeek account or custom relay under **API 账户** in Settings. Saving stores the key in macOS Keychain and queries the configured balance endpoint. Leave the key empty when editing to retain it; changing the endpoint requires entering the destination's key again.
+
+- A single account shows **provider icon remaining balance | ◉ today's existing cost estimate**. Without API accounts the menu bar stays unchanged.
+- The existing today / last seven days / month totals remain local-log API-equivalent estimates, not actual API debits. Balances are never added to those costs.
+- DeepSeek uses `/user/balance`, preserving CNY / USD and showing topped-up and granted credits in account details.
+- Relays support an HTTPS GET endpoint with Bearer authentication, a JSON amount path (such as `data.balance` or `data.0.quota`), currency, and a unit divisor. Use `100` for cents; consult the relay's documentation for internal quota units.
+- No automatic endpoint probing, Cookie authentication, POST, extra authentication headers, or custom scripts. OpenAI-compatible inference does not imply a balance API.
+- Multiple accounts aggregate separately by currency. Do not add multiple keys belonging to the same balance account. If any account has no valid result, the total shows `—` rather than a partial sum.
+- Refreshes approximately every minute, backing off to five minutes on failure. `↻` marks the previous balance; expand the balance strip for timestamps and errors. Failures never become zero.
+- Small separate caches, coalesced serial refreshes, a 15-second request timeout, a 256 KiB response limit, and no credential forwarding on redirects. Balance refreshes do not rescan token logs.
+
+This development version reads balances. It does not infer actual spending from balance changes or implement relay historical debit ledgers.
+
 ## Quota data
 
 Most providers are read from the login already on this Mac. Source credentials are not copied into Capacity Dock’s Keychain. ClinePass and Z.ai use an API key saved from Settings.
