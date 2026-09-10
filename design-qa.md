@@ -63,3 +63,10 @@ final result: validated with the limitations above
 - Existing `swift test -c release`: 203 tests in 20 suites passed. Universal packaging and installed ZIP-extraction strict/deep signature verification passed.
 - CUA verified Add opens the sheet, empty-key Save shows the required-key error, and Cancel returns to an unchanged empty account list. After subsequent user interaction, a DeepSeek balance was visibly present in the usage popover. No user key was entered or read by the agent.
 - Further CUA interaction stopped after user activity was detected. The mouse-leave dismissal path is source-verified; live hover-exit acceptance remains for the user.
+
+## API balances in the widget — 2026-09-10
+
+- Added DeepSeek and custom relay selections, preferred-provider persistence, original-currency balance labels, and adaptive balance detail cards. Native quota adapters remain separate; the widget shares the existing balance cache and does not start local-task polling for API accounts.
+- `swift test -c release`: 208 tests across 20 suites passed. Added coverage for selection persistence, platform grouping, missing / zero / stale balances, mixed currencies, and compact labels.
+- Universal `0.3.2-dev` packaging and strict/deep signature verification passed for the installed ZIP extraction. Updated the canonical `/Users/lu/Applications/CapacityDock.app` after exiting the old process.
+- CUA confirmed DeepSeek (connected) and custom relay entries in Settings, including both General toggles and the sidebar. Enabling the toggle was interrupted by user interaction, so a live balance-ring screenshot is not claimed here.

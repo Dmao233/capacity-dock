@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import SwiftUI
 
-private extension Color {
+extension Color {
     /// Warm off-white for Capacity Dock text: a very mild orange tint so bright
     /// labels on the dark card read softer than pure white and do not stress the eyes.
     static let capacityDockText = Color(red: 0.98, green: 0.95, blue: 0.90)
@@ -1034,17 +1034,31 @@ private struct CapacityDockProviderRow: View {
 
     private var headline: QuotaSummary.Window? { quota?.headlineWindow }
     private var percent: Double? { headline?.percent }
+    private var balance: APIBalanceDockPresentation? {
+        provider.apiBalanceKind.map { APIBalanceStore.shared.dockPresentation(for: $0) }
+    }
+    private var valueLabel: String { balance?.label ?? CapacityDockQuotaPresentation.ringPercentLabel(quota: quota) }
+    private var balanceColor: Color {
+        guard let balance, balance.hasBalance else { return .gray }
+        if balance.isStale { return .orange }
+        return balance.isUnavailable ? .red : .green
+    }
 
     var body: some View {
         Button(action: onClick) {
             VStack(spacing: CapacityDockMetrics.ringLabelSpacing(scale: scale)) {
                 ZStack {
                     CapacityDockUsageRing(
-                        progress: percent,
+                        progress: balance == nil ? percent : nil,
                         color: headlineRingColor,
                         scale: scale,
                         gaugeShape: gaugeShape
                     )
+                    if balance != nil {
+                        // A status outline, not a percentage of an unknown balance limit.
+                        CapacityDockGaugePath(kind: gaugeShape)
+                            .stroke(balanceColor, lineWidth: CapacityDockMetrics.ringStrokeWidth(scale: scale))
+                    }
 
                     if let image = ProviderIconCache.image(named: provider.iconName) {
                         Image(nsImage: image)
@@ -1075,13 +1089,14 @@ private struct CapacityDockProviderRow: View {
                 )
                 .compositingGroup()
 
-                Text(CapacityDockQuotaPresentation.ringPercentLabel(quota: quota))
+                Text(valueLabel)
                     .font(.system(
                         size: CapacityDockMetrics.percentageTextSize(scale: scale),
                         weight: .medium
                     ))
                     .monospacedDigit()
-                    .foregroundStyle(headlinePercentColor)
+                    .foregroundStyle(balance == nil ? headlinePercentColor : Color.capacityDockText.opacity(balance?.isStale == true ? 0.6 : 1))
+                    .lineLimit(1).minimumScaleFactor(0.65)
                     .contentTransition(.numericText())
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1089,7 +1104,7 @@ private struct CapacityDockProviderRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(provider.displayName) usage")
-        .accessibilityValue(CapacityDockQuotaPresentation.ringPercentLabel(quota: quota))
+        .accessibilityValue(balance?.totals?.map(\.text).joined(separator: " · ") ?? valueLabel)
         .accessibilityHint("Click to show usage details")
     }
 
@@ -1294,6 +1309,14 @@ struct CapacityDockDetailView: View {
 
     @ViewBuilder
     private func detail(for provider: CapacityDockProvider, quota: QuotaSummary?) -> some View {
+        if let kind = provider.apiBalanceKind {
+            APIBalanceDockDetail(provider: provider, kind: kind, scale: model.detailScale)
+        } else {
+            quotaDetail(for: provider, quota: quota)
+        }
+    }
+
+    private func quotaDetail(for provider: CapacityDockProvider, quota: QuotaSummary?) -> some View {
         VStack(alignment: .leading, spacing: 11 * model.detailScale) {
             HStack(spacing: 8 * model.detailScale) {
                 if let image = ProviderIconCache.image(named: provider.iconName) {

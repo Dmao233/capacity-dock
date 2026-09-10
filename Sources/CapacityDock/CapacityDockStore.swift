@@ -71,6 +71,11 @@ final class CapacityDockStore: CapacityDockQuotaReading {
         notifyQuotaChanged()
     }
 
+    func isDockProviderConnected(_ provider: CapacityDockProvider) -> Bool {
+        if let kind = provider.apiBalanceKind { return APIBalanceStore.shared.dockPresentation(for: kind).hasBalance }
+        return capacityDockQuotaSummary(for: provider)?.isEstablishedSession == true
+    }
+
     func capacityDockQuotaSummary(for provider: CapacityDockProvider) -> QuotaSummary? {
         if let summary = summaries[provider.id] {
             if loading.contains(provider.id) {

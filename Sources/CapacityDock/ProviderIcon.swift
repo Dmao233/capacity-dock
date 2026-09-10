@@ -95,6 +95,11 @@ enum ProviderIconCache {
     static func image(named name: String) -> NSImage? {
         let cacheKey = canonicalName(name)
         if let cached = images[cacheKey] { return cached }
+        if cacheKey == "api-relay", let image = NSImage(systemSymbolName: "server.rack", accessibilityDescription: "API relay") {
+            image.isTemplate = true
+            images[cacheKey] = image
+            return image
+        }
         for candidate in resourceCandidates(for: name) {
             for subdirectory in ["Resources/ProviderIcons", "ProviderIcons", nil] {
                 if let url = Bundle.module.url(

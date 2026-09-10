@@ -17,7 +17,7 @@ struct CapacityDockSettingsView: View {
 
     private var providers: [ProviderPane] {
         CapacityDockPreferences.supportedProviders
-            .filter { $0.catalogEntry.hasLiveCodeBurnQuotaAdapter }
+            .filter { $0.hasDockPresentation }
             .map { provider in
                 ProviderPane(
                     id: provider.id,
@@ -157,7 +157,11 @@ struct CapacityDockSettingsView: View {
             GeneralSettingsTab(store: store, snapshot: $snapshot)
         default:
             if let provider = CapacityDockProvider(rawValue: selection.wrappedValue) {
-                ProviderSettingsTab(store: store, provider: provider)
+                if let kind = provider.apiBalanceKind {
+                    APIBalanceSettingsTab(kind: kind).id(provider.id)
+                } else {
+                    ProviderSettingsTab(store: store, provider: provider)
+                }
             } else {
                 GeneralSettingsTab(store: store, snapshot: $snapshot)
             }
@@ -165,7 +169,7 @@ struct CapacityDockSettingsView: View {
     }
 
     private func isConnected(_ provider: CapacityDockProvider) -> Bool {
-        store.capacityDockQuotaSummary(for: provider)?.isEstablishedSession == true
+        store.isDockProviderConnected(provider)
     }
 
     struct ProviderPane: Identifiable {
@@ -359,7 +363,7 @@ private struct GeneralSettingsTab: View {
             }
 
             Section("Dock providers") {
-                ForEach(CapacityDockPreferences.supportedProviders.filter { $0.catalogEntry.hasLiveCodeBurnQuotaAdapter }) { provider in
+                ForEach(CapacityDockPreferences.supportedProviders.filter { $0.hasDockPresentation }) { provider in
                     Toggle(isOn: providerBinding(provider)) {
                         HStack(spacing: 7) {
                             if let image = ProviderIconCache.image(named: provider.iconName) {
@@ -374,7 +378,7 @@ private struct GeneralSettingsTab: View {
                     .disabled(!CapacityDockProviderSelection.canDeselect(
                         provider,
                         selected: snapshot.selectedProviders,
-                        isConnected: { store.capacityDockQuotaSummary(for: $0)?.isEstablishedSession == true }
+                        isConnected: { store.isDockProviderConnected($0) }
                     ))
                 }
                 Picker("Preferred provider", selection: preferredBinding) {

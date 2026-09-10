@@ -754,6 +754,8 @@ final class CapacityDockController {
 
     private func startActiveTaskMonitoring() {
         stopActiveTaskMonitoring()
+        // API balances share the existing minute cache, not local task polling.
+        guard model.hoveredProvider?.apiBalanceKind == nil else { return }
         refreshActiveTasks()
         let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in

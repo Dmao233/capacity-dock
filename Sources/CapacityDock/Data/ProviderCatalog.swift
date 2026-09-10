@@ -52,6 +52,8 @@ enum ProviderConnectionCatalog {
         entry("commandcode", "Command Code", [.automatic, .web], [.cookieOrWebSession]),
         entry("zai", "Z.ai", [.automatic, .api], [.apiTokenOrCloudCredentials], live: true),
         entry("openrouter", "OpenRouter", [.automatic, .api], [.apiTokenOrCloudCredentials]),
+        entry("deepseek", "DeepSeek", [.api], [.apiTokenOrCloudCredentials]),
+        entry("api-relay", "自定义中转站", [.api], [.apiTokenOrCloudCredentials]),
     ]
 
     private static func entry(

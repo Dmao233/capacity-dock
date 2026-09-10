@@ -165,6 +165,42 @@ enum APIBalanceClient {
     }
 }
 
+/// Balance-only presentation: no fictitious percentage or recharge baseline.
+struct APIBalanceDockPresentation {
+    let accounts: [APIBalanceAccount]
+    let totals: [APIBalanceAmount]?
+    let isStale: Bool
+    let isUnavailable: Bool
+    var hasBalance: Bool { totals != nil }
+
+    init(kind: APIBalanceAccount.Kind, accounts: [APIBalanceAccount], snapshots: [String: APIBalanceSnapshot],
+         errors: [String: String], now: Date = Date()) {
+        let matching = accounts.filter { $0.kind == kind }
+        self.accounts = matching
+        totals = APIBalanceParser.total(accounts: matching, snapshots: snapshots)
+        isStale = matching.contains { account in
+            errors[account.id] != nil || snapshots[account.id].map { now.timeIntervalSince($0.fetchedAt) > 300 } == true
+        }
+        isUnavailable = matching.contains { account in
+            snapshots[account.id]?.isAvailable == false
+        } || totals?.allSatisfy({ $0.value <= 0 }) == true
+    }
+
+    var label: String {
+        guard let totals, let amount = totals.first else { return "—" }
+        guard totals.count == 1 else { return NSLocalizedString("Multi-currency", comment: "") }
+        let number = NSDecimalNumber(decimal: amount.value)
+        let value: String
+        if abs(number.doubleValue) >= 1_000 {
+            value = number.doubleValue.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)).locale(Locale(identifier: "en_US")))
+        } else {
+            value = amount.text.replacingOccurrences(of: " \(amount.currency)", with: "")
+        }
+        let symbol = amount.currency == "CNY" ? "¥" : amount.currency == "USD" ? "$" : amount.currency + " "
+        return symbol + value
+    }
+}
+
 @MainActor @Observable
 final class APIBalanceStore {
     static let shared = APIBalanceStore()
@@ -188,6 +224,10 @@ final class APIBalanceStore {
         snapshots = cached.filter { entry in entry.key == entry.value.account.id && loadedAccounts.contains(entry.value.account) }
     }
 
+    func dockPresentation(for kind: APIBalanceAccount.Kind) -> APIBalanceDockPresentation {
+        APIBalanceDockPresentation(kind: kind, accounts: accounts, snapshots: snapshots, errors: errors)
+    }
+
     var menuText: String? {
         guard !accounts.isEmpty else { return nil }
         let totals = APIBalanceParser.total(accounts: accounts, snapshots: snapshots)
@@ -207,9 +247,9 @@ final class APIBalanceStore {
         refresh()
     }
 
-    func refresh(force: Bool = false) {
+    func refresh(force: Bool = false, kind: APIBalanceAccount.Kind? = nil) {
         guard task == nil, !accounts.isEmpty else { return }
-        let pending = accounts.filter { force || (nextRefresh[$0.id] ?? .distantPast) <= Date() }
+        let pending = accounts.filter { (kind == nil || $0.kind == kind) && (force || (nextRefresh[$0.id] ?? .distantPast) <= Date()) }
         guard !pending.isEmpty else { return }
         let generation = revision
         isRefreshing = true

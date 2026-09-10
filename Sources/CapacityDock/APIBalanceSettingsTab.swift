@@ -1,10 +1,19 @@
 import SwiftUI
 
 struct APIBalanceSettingsTab: View {
+    var kind: APIBalanceAccount.Kind? = nil
     @State private var store = APIBalanceStore.shared
     @State private var editorAccount: APIBalanceAccount?
     @State private var error: String?
     @State private var saving = false
+
+    private var accounts: [APIBalanceAccount] { store.accounts.filter { kind == nil || $0.kind == kind } }
+
+    private func newAccount() -> APIBalanceAccount {
+        var account = APIBalanceAccount()
+        if kind == .relay { account.kind = .relay; account.name = "自定义中转站" }
+        return account
+    }
 
     var body: some View {
         Form {
@@ -14,11 +23,11 @@ struct APIBalanceSettingsTab: View {
                     .font(.callout).foregroundStyle(.secondary)
             } header: { Text("API 账户") }
             Section {
-                if store.accounts.isEmpty {
+                if accounts.isEmpty {
                     Text("尚未添加 API 账户，菜单栏保持原样。")
                         .foregroundStyle(.secondary)
                 }
-                ForEach(store.accounts) { account in
+                ForEach(accounts) { account in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             APIBalanceLogo(account: account).frame(width: 18, height: 18)
@@ -59,10 +68,10 @@ struct APIBalanceSettingsTab: View {
                     }.padding(.vertical, 4)
                 }
                 HStack {
-                    Button(store.isRefreshing ? "正在更新…" : "刷新余额") { store.refresh(force: true) }
-                        .disabled(store.isRefreshing || store.accounts.isEmpty)
+                    Button(store.isRefreshing ? "正在更新…" : "刷新余额") { store.refresh(force: true, kind: kind) }
+                        .disabled(store.isRefreshing || accounts.isEmpty)
                     Spacer()
-                    Button("添加账户") { error = nil; editorAccount = APIBalanceAccount() }
+                    Button("添加账户") { error = nil; editorAccount = newAccount() }
                 }
             } header: { Text("已添加的账户") }
             if let error {
@@ -221,5 +230,76 @@ struct APIBalanceSummary: View {
             }.padding(9).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
                 .onAppear { store.refresh() }
         }
+    }
+}
+
+/// Uses the same account snapshots as the menu bar; the widget never fetches its own copy.
+struct APIBalanceDockDetail: View {
+    let provider: CapacityDockProvider
+    let kind: APIBalanceAccount.Kind
+    let scale: CGFloat
+    @State private var store = APIBalanceStore.shared
+
+    var body: some View {
+        let presentation = store.dockPresentation(for: kind)
+        VStack(alignment: .leading, spacing: 12 * scale) {
+            HStack(spacing: 8 * scale) {
+                if let image = ProviderIconCache.image(named: provider.iconName) {
+                    Image(nsImage: image).resizable().scaledToFit().frame(width: 24 * scale, height: 24 * scale)
+                }
+                Text(provider.displayName).font(.system(size: 17 * scale, weight: .semibold))
+                Spacer(minLength: 0)
+                Text("API 余额").font(.system(size: 10 * scale)).foregroundStyle(.secondary)
+            }
+            if presentation.accounts.isEmpty {
+                Text("请先在 API 账户设置中添加账户。")
+                    .font(.system(size: 12 * scale)).foregroundStyle(.secondary)
+            } else {
+                Text("当前剩余").font(.system(size: 11 * scale)).foregroundStyle(.secondary)
+                if let totals = presentation.totals {
+                    ForEach(totals, id: \.currency) { amount in
+                        Text(amount.text).font(.system(size: 24 * scale, weight: .semibold)).monospacedDigit()
+                    }
+                } else {
+                    Text("—").font(.system(size: 24 * scale, weight: .semibold))
+                    Text("部分账户尚无有效余额，暂不合计。")
+                        .font(.system(size: 10 * scale)).foregroundStyle(.secondary)
+                }
+                if presentation.isStale {
+                    Text("当前显示上次余额，请查看更新时间。")
+                        .font(.system(size: 10 * scale)).foregroundStyle(.orange)
+                }
+                Divider().overlay(.white.opacity(0.12))
+                ForEach(presentation.accounts) { account in
+                    VStack(alignment: .leading, spacing: 5 * scale) {
+                        if presentation.accounts.count > 1 { Text(account.name).font(.system(size: 11 * scale, weight: .semibold)) }
+                        if let snapshot = store.snapshots[account.id] {
+                            ForEach(snapshot.amounts, id: \.currency) { amount in
+                                if presentation.accounts.count > 1 { Text(amount.text).font(.system(size: 13 * scale)).monospacedDigit() }
+                                if let granted = amount.granted, let toppedUp = amount.toppedUp {
+                                    Text("充值 \(APIBalanceAmount(currency: amount.currency, value: toppedUp).text)")
+                                    Text("赠送 \(APIBalanceAmount(currency: amount.currency, value: granted).text)")
+                                }
+                            }
+                            if snapshot.isAvailable == false { Text("平台报告余额当前不可用").foregroundStyle(.orange) }
+                            Text("更新于 \(snapshot.fetchedAt.formatted(date: .abbreviated, time: .standard))")
+                        }
+                        if let error = store.errors[account.id] { Text(error).foregroundStyle(.orange) }
+                        else if store.snapshots[account.id] == nil { Text(store.isRefreshing ? "正在查询余额…" : "等待余额更新") }
+                    }.font(.system(size: 10 * scale)).foregroundStyle(.secondary)
+                }
+            }
+            HStack {
+                Button("刷新余额") { store.refresh(force: true, kind: kind) }
+                    .disabled(store.isRefreshing || presentation.accounts.isEmpty)
+                Spacer(minLength: 4)
+                Button("管理账户") {
+                    NotificationCenter.default.post(name: .capacityDockOpenProviderSettings, object: provider.id)
+                }
+            }.controlSize(.small)
+        }
+        .foregroundStyle(Color.capacityDockText)
+        .environment(\.colorScheme, .dark)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

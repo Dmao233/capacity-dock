@@ -140,6 +140,25 @@ struct CapacityDockPreferencesTests {
         #expect(snapshot.preferredProvider == .codex)
     }
 
+    @Test("API balance providers persist in the dock without joining native quota polling")
+    @MainActor func persistsAPIBalanceProviders() {
+        let suite = "CapacityDockAPIDockTests.\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        CapacityDockPreferences.setSelectedProviders([.codex, .deepSeek, .apiRelay], defaults: defaults)
+        CapacityDockPreferences.setPreferredProvider(.deepSeek, defaults: defaults)
+        let snapshot = CapacityDockPreferences.load(defaults: defaults)
+        #expect(snapshot.selectedProviders == [.codex, .deepSeek, .apiRelay])
+        #expect(snapshot.preferredProvider == .deepSeek)
+        #expect(CapacityDockProvider.deepSeek.apiBalanceKind == .deepSeek)
+        #expect(CapacityDockProvider.apiRelay.apiBalanceKind == .relay)
+        for provider in [CapacityDockProvider.deepSeek, .apiRelay] {
+            #expect(provider.hasDockPresentation)
+            #expect(!provider.catalogEntry.hasLiveCodeBurnQuotaAdapter)
+            #expect(!CapacityDockStore.liveProviderIDs.contains(provider.id))
+        }
+    }
+
     @Test("removing the preferred provider picks the first remaining provider")
     func preferredProviderStaysSelected() {
         let defaults = defaults()

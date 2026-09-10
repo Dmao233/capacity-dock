@@ -88,6 +88,69 @@ struct APIBalanceTests {
         defaults.set(try JSONEncoder().encode([changed]), forKey: "CapacityDockAPIBalanceAccounts")
         #expect(APIBalanceStore(defaults: defaults).menuText == "—")
     }
+
+    @Test func widgetGroupsOnlyItsOwnPlatformAndRequiresCompleteBalances() throws {
+        let first = APIBalanceAccount()
+        let second = APIBalanceAccount()
+        let relay = relay()
+        let now = Date()
+        let snapshots = [
+            first.id: APIBalanceSnapshot(account: first, amounts: [.init(currency: "CNY", value: 10)], fetchedAt: now),
+            second.id: APIBalanceSnapshot(account: second, amounts: [.init(currency: "CNY", value: 2)], fetchedAt: now),
+            relay.id: APIBalanceSnapshot(account: relay, amounts: [.init(currency: "USD", value: 300)], fetchedAt: now)
+        ]
+        let accounts = [first, second, relay]
+        let deepSeek = APIBalanceDockPresentation(kind: .deepSeek, accounts: accounts, snapshots: snapshots, errors: [:], now: now)
+        #expect(deepSeek.accounts == [first, second])
+        #expect(deepSeek.label == "¥12.00")
+        #expect(!deepSeek.isStale)
+        #expect(!deepSeek.isUnavailable)
+        let relayView = APIBalanceDockPresentation(kind: .relay, accounts: accounts, snapshots: snapshots, errors: [:], now: now)
+        #expect(relayView.label == "$300.00")
+        let partial = APIBalanceDockPresentation(kind: .deepSeek, accounts: accounts, snapshots: [first.id: snapshots[first.id]!], errors: [:])
+        #expect(!partial.hasBalance)
+        #expect(partial.label == "—")
+        let empty = APIBalanceDockPresentation(kind: .relay, accounts: [first], snapshots: snapshots, errors: [:])
+        #expect(empty.label == "—")
+        #expect(!empty.isUnavailable)
+    }
+
+    @Test func widgetKeepsCurrenciesSeparateAndDoesNotTreatOneEmptyWalletAsExhausted() throws {
+        let account = APIBalanceAccount()
+        let snapshot = APIBalanceSnapshot(account: account, amounts: [.init(currency: "CNY", value: 0), .init(currency: "USD", value: 12)], fetchedAt: Date(), isAvailable: true)
+        let view = APIBalanceDockPresentation(kind: .deepSeek, accounts: [account], snapshots: [account.id: snapshot], errors: [:])
+        #expect(view.totals == snapshot.amounts)
+        #expect(view.label == NSLocalizedString("Multi-currency", comment: ""))
+        #expect(!view.isUnavailable)
+    }
+
+    @Test func widgetShowsZeroAndMarksCachedOrUnavailableBalances() {
+        let account = APIBalanceAccount()
+        let now = Date()
+        var snapshot = APIBalanceSnapshot(account: account, amounts: [.init(currency: "CNY", value: 0)], fetchedAt: now)
+        let zero = APIBalanceDockPresentation(kind: .deepSeek, accounts: [account], snapshots: [account.id: snapshot], errors: [:], now: now)
+        #expect(zero.hasBalance)
+        #expect(zero.label == "¥0.00")
+        #expect(zero.isUnavailable)
+        snapshot.amounts[0].value = 5
+        snapshot.isAvailable = false
+        let unavailable = APIBalanceDockPresentation(kind: .deepSeek, accounts: [account], snapshots: [account.id: snapshot], errors: [:], now: now)
+        #expect(unavailable.isUnavailable)
+        let old = APIBalanceDockPresentation(kind: .deepSeek, accounts: [account], snapshots: [account.id: snapshot], errors: [:], now: now.addingTimeInterval(301))
+        #expect(old.isStale)
+        #expect(old.label == "¥5.00")
+        let failed = APIBalanceDockPresentation(kind: .deepSeek, accounts: [account], snapshots: [account.id: snapshot], errors: [account.id: "Fixture failure"], now: now)
+        #expect(failed.isStale)
+        #expect(failed.label == "¥5.00")
+    }
+
+    @Test(arguments: [("5.36", "CNY", "¥5.36"), ("12000", "USD", "$12K"), ("-0.10", "EUR", "EUR -0.10")])
+    func widgetCompactsOnlyLargeAmounts(value: String, currency: String, label: String) throws {
+        let account = relay()
+        let snapshot = APIBalanceSnapshot(account: account, amounts: [.init(currency: currency, value: try #require(Decimal(string: value)))], fetchedAt: Date())
+        let view = APIBalanceDockPresentation(kind: .relay, accounts: [account], snapshots: [account.id: snapshot], errors: [:])
+        #expect(view.label == label)
+    }
 }
 
 private final class BalanceFixtureProtocol: URLProtocol, @unchecked Sendable {

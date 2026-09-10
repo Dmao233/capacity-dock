@@ -36,6 +36,18 @@ struct CapacityDockProvider: RawRepresentable, CaseIterable, Identifiable, Hasha
     static let antigravity = CapacityDockProvider(known: "antigravity")
     static let clinepass = CapacityDockProvider(known: "clinepass")
     static let zai = CapacityDockProvider(known: "zai")
+    static let deepSeek = CapacityDockProvider(known: "deepseek")
+    static let apiRelay = CapacityDockProvider(known: "api-relay")
+
+    var apiBalanceKind: APIBalanceAccount.Kind? {
+        switch rawValue {
+        case Self.deepSeek.rawValue: .deepSeek
+        case Self.apiRelay.rawValue: .relay
+        default: nil
+        }
+    }
+
+    var hasDockPresentation: Bool { catalogEntry.hasLiveCodeBurnQuotaAdapter || apiBalanceKind != nil }
 
     var catalogEntry: ProviderConnectionCatalogEntry {
         ProviderConnectionCatalog.providers.first { $0.id == rawValue }!
