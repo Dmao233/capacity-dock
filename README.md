@@ -100,7 +100,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.2
+Scripts/package-app.sh 0.3.3
 open .build/dist/CapacityDock.app
 ```
 
@@ -136,7 +136,7 @@ swift run
 - **外观**：右上角「更多」选择默认深色紫色，设置全页与账单统一，可选浅色或跟随系统；底部选择展示币种。动效尊重系统的「减少动态效果」。
 - **历史读取**：按文件指纹复用日志缓存，合并重复请求，流式读取时及时释放临时内存；缓存未变化时不重写，分条编码降低临时开销，按周期直接筛选缓存事件。首次读取大量历史日志仍可能较慢，界面会显示读取进度；后续周期切换可复用缓存。后台每分钟检查一次，打开页面仍使用 30 秒有效期，手动刷新可立即重读。
 
-本机账单读取 Codex、Claude、Grok、Cursor 和 Cursor Agent 的 token 日志，金额是 **API 等价估算，不是订阅账单或实际扣费**。本版补齐 `gpt-6-astra` 的估算单价与长上下文档位。未定价模型仍保留用量，不把未知价格当作已确认的零费用。
+本机账单读取 Codex、Claude、Grok、Cursor 和 Cursor Agent 的 token 日志，金额是 **API 等价估算，不是订阅账单或实际扣费**。估算包含 `gpt-6-astra` 与 `grok-4.7`（含日志里的 `grok-4.7-build`）的单价和长上下文档位。未定价模型仍保留用量，不把未知价格当作已确认的零费用。
 
 币种仅影响显示，原始估算保持 USD。非 USD 币种需要汇率；无可用缓存且汇率获取失败时保持原币种并提示。选择币种还会同步到 `~/.config/codeburn/config.json` 的币种字段，方便与 CodeBurn 配合使用，保留该文件的其他设置。
 

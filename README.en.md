@@ -100,7 +100,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.2
+Scripts/package-app.sh 0.3.3
 open .build/dist/CapacityDock.app
 ```
 
@@ -136,7 +136,7 @@ Click the menu-bar amount to open the bill directly below it. The existing edge 
 - **Appearance:** Dark violet is the default across the bill and all Settings pages. Use the top-right More menu for light, dark, or system theme, and the footer for currency. Period and chart controls share sliding selection and hover feedback; period controls stay left-aligned and chart controls are centered. Model/provider underlines animate consistently. Animations respect Reduce Motion.
 - **Historical loading:** File fingerprints reuse parsed logs, duplicate requests share work, and streaming releases temporary memory promptly. Unchanged caches are not rewritten; per-entry encoding and early period filtering reduce temporary allocations. The first scan of a large history can still take time and shows progress; later period switches reuse caches. Background checks run once per minute, while opening a page uses a 30-second freshness window and manual reload bypasses it.
 
-Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. Amounts are **API-equivalent estimates, not subscription bills or actual charges**. This version adds `gpt-6-astra` rates and its long-context tier. Unpriced models retain their usage; unknown prices are not presented as confirmed zero cost.
+Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. Amounts are **API-equivalent estimates, not subscription bills or actual charges**. Estimates include `gpt-6-astra` and `grok-4.7` (including the logged id `grok-4.7-build`) rates and their long-context tiers. Unpriced models retain their usage; unknown prices are not presented as confirmed zero cost.
 
 Currency changes only affect display; source estimates remain in USD. Non-USD displays use exchange rates. If a rate cannot be fetched and no cached rate is available, the previous currency stays selected with an error message. Currency selection also updates the currency fields in `~/.config/codeburn/config.json`, preserving other settings for use alongside CodeBurn.
 

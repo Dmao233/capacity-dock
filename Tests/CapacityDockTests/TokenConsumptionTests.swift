@@ -120,6 +120,37 @@ struct TokenConsumptionTests {
         #expect(CodeBurnPricing.calculateCost(model: "grok-4.6", inputTokens: 100_000, outputTokens: 10_000, cacheCreationTokens: 0, cacheReadTokens: 100_000) == 0.62)
     }
 
+    @Test(
+        "Grok 4.7 uses Grok 4.6 short and long-context rates",
+        arguments: ["grok-4.7", "xai/grok-4.7", "x-ai/grok-4.7", "grok-4.7-build", "grok-4.7-20260921"]
+    )
+    func grok47MatchesGrok46Rates(model: String) {
+        #expect(CodeBurnPricing.hasBillableRate(model))
+        let low = CodeBurnPricing.calculateCost(
+            model: model, inputTokens: 100_000, outputTokens: 10_000,
+            cacheCreationTokens: 0, cacheReadTokens: 99_999
+        )
+        let high = CodeBurnPricing.calculateCost(
+            model: model, inputTokens: 100_000, outputTokens: 10_000,
+            cacheCreationTokens: 0, cacheReadTokens: 100_000
+        )
+        #expect(low == 0.3099995)
+        #expect(high == 0.62)
+    }
+
+    @Test("Grok 4.6 build ids keep the short card they already billed")
+    func grok46BuildStaysOnShortCard() {
+        #expect(CodeBurnPricing.hasBillableRate("grok-4.6-build"))
+        let high = CodeBurnPricing.calculateCost(
+            model: "grok-4.6-build", inputTokens: 100_000, outputTokens: 10_000,
+            cacheCreationTokens: 0, cacheReadTokens: 100_000
+        )
+        #expect(high == 0.31)
+        #expect(CodeBurnGrokReader.chooseAuthoritativeModel(
+            modelIds: ["grok-4.7-build"], existingModel: "grok-4.7"
+        ) == "grok-4.7-build")
+    }
+
     @Test("Astra uses official input, cache and output rates", arguments: ["gpt-6-astra", "openai/gpt-6-astra", "gpt-6-astra-20260903"])
     func astraStandardPricing(model: String) {
         #expect(CodeBurnPricing.hasBillableRate(model))

@@ -23,7 +23,11 @@ enum CodeBurnPricing {
 
     private static let webSearchCost = 0.01
     private static let oneHourCacheWriteMultiplier = 1.6
-    private static let grok46PromptThreshold = 200_000
+    /// SpaceXAI bills the higher tier for the whole request once prompt
+    /// tokens reach 200k. grok-4.7 uses the same card as grok-4.6.
+    /// https://docs.x.ai/developers/pricing (verified 2026-09-22)
+    private static let grokLongContextPromptThreshold = 200_000
+    private static let grokLongContextModels: Set<String> = ["grok-4.6", "grok-4.7"]
     private static let reasoningIncludedInOutput: Set<String> = ["claude", "codex", "copilot"]
 
     private static let aliases: [String: String] = [
@@ -66,6 +70,7 @@ enum CodeBurnPricing {
         // OpenAI standard API rates, verified 2026-09-07:
         // https://developers.openai.com/api/docs/models/gpt-6-astra
         "gpt-6-astra": .init(input: 10e-6, output: 50e-6, cacheWrite: 12.5e-6, cacheRead: 1e-6, fast: 2),
+        "grok-4.7": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 5e-7),
         "grok-4.6": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 5e-7),
         "grok-4.5": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 3e-7),
         "grok-build-0.1": .init(input: 1e-6, output: 2e-6, cacheWrite: nil, cacheRead: 2e-7),
@@ -110,7 +115,8 @@ enum CodeBurnPricing {
 
     private static let sortedKeys: [String] = table.keys.sorted { $0.count > $1.count }
 
-    private static let grok46HighPrompt = costs(
+    /// $4 / $1 / $12 per 1M input / cached input / output.
+    private static let grokLongContextHighPrompt = costs(
         from: .init(input: 4e-6, output: 12e-6, cacheWrite: nil, cacheRead: 1e-6)
     )
 
@@ -127,21 +133,28 @@ enum CodeBurnPricing {
     }
 
     static func getModelCosts(_ model: String) -> ModelCosts? {
+        guard let key = matchedSnapshotKey(model) else { return nil }
+        return table[key]
+    }
+
+    /// Catalog id used for rates and context tiers. Suffixes such as
+    /// `grok-4.7-build` resolve to `grok-4.7`.
+    private static func matchedSnapshotKey(_ model: String) -> String? {
         let withPrefix = model.replacingOccurrences(of: #"@.*$"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
         let name = canonicalName(model)
         let canonical = resolveAlias(name)
 
-        if let costs = table[withPrefix] { return costs }
-        if let costs = table[canonical] { return costs }
-        if let costs = table[name] { return costs }
+        if table[withPrefix] != nil { return withPrefix }
+        if table[canonical] != nil { return canonical }
+        if table[name] != nil { return name }
 
         for key in sortedKeys where canonical == key || canonical.hasPrefix(key + "-") {
-            return table[key]
+            return key
         }
 
         let lower = canonical.lowercased()
-        if lower != canonical, let costs = table[lower] { return costs }
+        if lower != canonical, table[lower] != nil { return lower }
         return nil
     }
 
@@ -251,10 +264,17 @@ enum CodeBurnPricing {
             high.outputCostPerToken *= 1.5
             return high
         }
-        if resolveCanonicalModelId(model) == "grok-4.6", promptTokens >= grok46PromptThreshold {
-            return grok46HighPrompt
+        guard promptTokens >= grokLongContextPromptThreshold,
+              let catalog = matchedSnapshotKey(model),
+              grokLongContextModels.contains(catalog) else {
+            return base
         }
-        return base
+        // `grok-4.6-build` already bills the short card. `grok-4.7-build` is
+        // the id in current logs, so the new model uses the catalog tier.
+        if catalog == "grok-4.6", resolveCanonicalModelId(model) != "grok-4.6" {
+            return base
+        }
+        return grokLongContextHighPrompt
     }
 
     private static func safe(_ value: Int) -> Int {
