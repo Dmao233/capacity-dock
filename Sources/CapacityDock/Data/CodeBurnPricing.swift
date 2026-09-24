@@ -159,7 +159,7 @@ enum CodeBurnPricing {
 
     /// Catalog id used for rates and context tiers. Suffixes such as
     /// `grok-4.7-build` resolve to `grok-4.7`.
-    private static func matchedSnapshotKey(_ model: String) -> String? {
+    static func matchedSnapshotKey(_ model: String) -> String? {
         if let hit = lookups.withLock({ $0[model]?.key }) { return hit }
         let value = computeSnapshotKey(model)
         lookups.withLock { $0[model, default: Lookup()].key = .some(value) }
@@ -283,8 +283,9 @@ enum CodeBurnPricing {
         model: String, base: ModelCosts, promptTokens: Int, cacheCreationTokens: Int
     ) -> ModelCosts {
         // Both GPT-6 cards bill the whole request at 2x input/cache and 1.5x
-        // output once the prompt exceeds 272K tokens.
-        if gpt6LongContextModels.contains(resolveCanonicalModelId(model)),
+        // output once the prompt exceeds 272K tokens. Matched through the
+        // catalog key so every id priced as Sol/Astra is also tiered as one.
+        if let catalog = matchedSnapshotKey(model), gpt6LongContextModels.contains(catalog),
            promptTokens + cacheCreationTokens > 272_000 {
             var high = base
             high.inputCostPerToken *= 2

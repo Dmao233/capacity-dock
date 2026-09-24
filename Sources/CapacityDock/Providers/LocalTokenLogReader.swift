@@ -807,7 +807,11 @@ struct TokenLogDayCache: Codable, Sendable {
         let stale = repricedModels.filter { decoded.version < $0.version }.reduce(into: Set<String>()) { $0.formUnion($1.models) }
         if !stale.isEmpty {
             decoded.files = decoded.files.filter { _, entry in
-                !entry.events.contains { $0.model.map(stale.contains) ?? false }
+                // Compare catalog keys: "openai/gpt-6-sol" and dated ids were
+                // parsed with the same (old) rates as the bare name.
+                !entry.events.contains { event in
+                    event.model.flatMap(CodeBurnPricing.matchedSnapshotKey).map(stale.contains) ?? false
+                }
             }
         }
         // Older files are rewritten in the current form on the next save.
