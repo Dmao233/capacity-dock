@@ -636,6 +636,14 @@ struct NewModelPricingTests {
         )
         #expect(abs(long - (0.6 * 2 + 0.1 * 1.5)) < 1e-9)
         #expect(CodeBurnPricing.getModelCosts("gpt-6-sol")?.cacheWriteCostIsExplicit == true)
+        // Suffixed ids priced as Sol get the long-context tier too.
+        for variant in ["gpt-6-sol-preview", "openai/gpt-6-sol", "gpt-6-sol-20260924"] {
+            let tiered = CodeBurnPricing.calculateCost(
+                model: variant, inputTokens: 300_000, outputTokens: 10_000,
+                cacheCreationTokens: 0, cacheReadTokens: 0
+            )
+            #expect(abs(tiered - long) < 1e-9, "\(variant)")
+        }
     }
 
     @Test("Cached gpt-6-sol files from older caches are dropped for reparsing")
@@ -644,10 +652,12 @@ struct NewModelPricingTests {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("cache.json")
-        let v6 = #"{"version":6,"files":{"/x/sol.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-sol",7,1,0,0,0,1]]},"/x/astra.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-astra",7,1,0,0,0,1]]}}}"#
+        let v6 = #"{"version":6,"files":{"/x/sol.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-sol",7,1,0,0,0,1]]},"/x/astra.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-astra",7,1,0,0,0,1]]},"/x/sol-ns.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"openai/gpt-6-sol",7,1,0,0,0,1]]},"/x/sol-dated.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-sol-20260924",7,1,0,0,0,1]]}}}"#
         try Data(v6.utf8).write(to: url)
         let cache = TokenLogDayCache.load(from: url)
         #expect(cache.files["/x/sol.jsonl"] == nil)
+        #expect(cache.files["/x/sol-ns.jsonl"] == nil)
+        #expect(cache.files["/x/sol-dated.jsonl"] == nil)
         #expect(cache.files["/x/astra.jsonl"] != nil)
     }
 }

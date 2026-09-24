@@ -30,4 +30,16 @@ struct QuotaSessionWindowTests {
         let monthly = QuotaSummary.Window(label: "Monthly", percent: 0.5, resetsAt: nil)
         #expect(summary(primary: monthly, details: [monthly]).sessionWindow == nil)
     }
+
+    @Test("Aggregate 5h labels count as the session window")
+    func aggregateSessionWindow() {
+        let weekly = QuotaSummary.Window(label: "Weekly", percent: 0.2, resetsAt: nil)
+        for label in ["Claude and GPT models · Five-hour", "Gemini Models · Five-hour"] {
+            let fiveHour = QuotaSummary.Window(label: label, percent: 0.5, resetsAt: nil)
+            #expect(fiveHour.isSessionWindow)
+            #expect(summary(primary: weekly, details: [weekly, fiveHour]).sessionWindow == fiveHour)
+        }
+        #expect(!QuotaSummary.Window(label: "GPT-5.3-Codex-Spark · 5-hour", percent: 0.1, resetsAt: nil).isSessionWindow)
+        #expect(!QuotaSummary.Window(label: "Weekly · Opus", percent: 0.1, resetsAt: nil).isSessionWindow)
+    }
 }
