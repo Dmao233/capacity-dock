@@ -1005,8 +1005,7 @@ private struct RingPreview: View {
                                 color: style.color(for: sample.session, ring: .session),
                                 scale: 1,
                                 gaugeShape: gaugeShape,
-                                isInner: true,
-                                cornerRadius: CapacityDockMetrics.innerRingCornerRadius(scale: 1, gaugeShape: gaugeShape)
+                                isInner: true
                             )
                             .padding(CapacityDockMetrics.innerRingInset(scale: 1))
                         }

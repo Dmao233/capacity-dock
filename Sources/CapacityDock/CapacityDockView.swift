@@ -59,19 +59,11 @@ enum CapacityDockMetrics {
     static func innerRingStrokeWidth(scale: CGFloat) -> CGFloat { max(1, baseInnerRingStrokeWidth * scale) }
     static func nestedProviderIconSize(scale: CGFloat) -> CGFloat { points(baseNestedProviderIconSize, scale) }
     static func percentageTextSize(scale: CGFloat) -> CGFloat { points(basePercentageTextSize, scale) }
-    /// Corner radius of the outer gauge; the squircle matches
-    /// `CapacityDockGaugePath`.
-    static func ringCornerRadius(scale: CGFloat, gaugeShape: CapacityDockGaugeShape) -> CGFloat {
-        let size = ringSize(scale: scale)
-        return gaugeShape == .circle ? size / 2 : size * CapacityDockGaugePath.squircleCornerRatio
-    }
-    /// Nested shapes share a centre of curvature: each inset subtracts from
-    /// the radius, so the gap between them stays even around the corners.
-    static func innerRingCornerRadius(scale: CGFloat, gaugeShape: CapacityDockGaugeShape) -> CGFloat {
-        max(0, ringCornerRadius(scale: scale, gaugeShape: gaugeShape) - innerRingInset(scale: scale))
-    }
-    static func railFreeRadius(scale: CGFloat, gaugeShape: CapacityDockGaugeShape) -> CGFloat {
-        ringCornerRadius(scale: scale, gaugeShape: gaugeShape) + railCrossPad(scale: scale)
+    /// The ring + percentage block is centred as a whole, which leaves the
+    /// ring (what the eye reads as the centre) half a label too high.
+    /// Shifting by that much centres the ring and lets the label hang below.
+    static func ringOpticalOffset(scale: CGFloat) -> CGFloat {
+        points((baseRingLabelSpacing + basePercentageTextSize * 1.2) / 2, scale)
     }
     static func detailWidth(scale: CGFloat, hasTasks: Bool = false) -> CGFloat {
         points(baseDetailWidth + (hasTasks ? 60 : 0), scale)
@@ -224,22 +216,16 @@ final class CapacityDockViewModel {
             bodyWidth: railWidth,
             bodyLength: bodyLength,
             restLength: restingBodyLength,
-            freeRadius: railFreeRadius,
             shoulderDepth: CapacityDockMetrics.edgeShoulderDepth(scale: scale),
             attachmentProgress: attachmentProgress,
             edge: attachmentEdge
         )
     }
 
-    var railFreeRadius: CGFloat {
-        CapacityDockMetrics.railFreeRadius(scale: scale, gaugeShape: preferences.gaugeShape)
-    }
-
     var scoopContactRadius: CGFloat {
         CapacityDockRailShape.contactRadius(
             bodyWidth: railWidth,
             restLength: restingBodyLength,
-            freeRadius: railFreeRadius,
             shoulderDepth: CapacityDockMetrics.edgeShoulderDepth(scale: scale),
             attachmentProgress: attachmentProgress
         )
@@ -762,6 +748,9 @@ struct CapacityDockView: View {
                 scale: model.scale,
                 gaugeShape: model.preferences.gaugeShape,
                 ringStyle: model.preferences.ringStyle,
+                // A side rail has the length to spare; across a top or bottom
+                // rail the label would reach the free edge.
+                opticalOffset: model.isVertical ? CapacityDockMetrics.ringOpticalOffset(scale: model.scale) : 0,
                 onClick: { onProviderClick(provider) }
             )
         }
@@ -1060,6 +1049,8 @@ private struct CapacityDockProviderRow: View {
     let scale: CGFloat
     let gaugeShape: CapacityDockGaugeShape
     let ringStyle: CapacityDockRingStyle
+    /// Along the ring-over-label axis; 0 where the rail is too thin for it.
+    var opticalOffset: CGFloat = 0
     let onClick: () -> Void
 
     private var headline: QuotaSummary.Window? { quota?.headlineWindow }
@@ -1102,8 +1093,7 @@ private struct CapacityDockProviderRow: View {
                             color: ringStyle.color(for: session.percent, ring: .session),
                             scale: scale,
                             gaugeShape: gaugeShape,
-                            isInner: true,
-                            cornerRadius: CapacityDockMetrics.innerRingCornerRadius(scale: scale, gaugeShape: gaugeShape)
+                            isInner: true
                         )
                         .padding(CapacityDockMetrics.innerRingInset(scale: scale))
                         .transition(.scale(scale: 0.6).combined(with: .opacity))
@@ -1147,6 +1137,7 @@ private struct CapacityDockProviderRow: View {
                     .lineLimit(1).minimumScaleFactor(0.65)
                     .contentTransition(.numericText())
             }
+            .offset(y: opticalOffset)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
@@ -1202,7 +1193,6 @@ struct CapacityDockUsageRing: View {
     let scale: CGFloat
     let gaugeShape: CapacityDockGaugeShape
     var isInner = false
-    var cornerRadius: CGFloat? = nil
 
     private var strokeWidth: CGFloat {
         isInner
@@ -1216,14 +1206,14 @@ struct CapacityDockUsageRing: View {
 
     var body: some View {
         ZStack {
-            CapacityDockGaugePath(kind: gaugeShape, cornerRadius: cornerRadius)
+            CapacityDockGaugePath(kind: gaugeShape)
                 .stroke(
                     progress == nil ? Color.white.opacity(0.10) : color.opacity(0.22),
                     lineWidth: strokeWidth
                 )
 
             if progress != nil {
-                CapacityDockGaugePath(kind: gaugeShape, cornerRadius: cornerRadius)
+                CapacityDockGaugePath(kind: gaugeShape)
                     .trim(from: 0, to: amount)
                     .stroke(
                         color,
@@ -1239,10 +1229,7 @@ struct CapacityDockUsageRing: View {
 }
 
 struct CapacityDockGaugePath: Shape {
-    static let squircleCornerRatio: CGFloat = 0.30
     let kind: CapacityDockGaugeShape
-    /// Squircle only. Nil keeps the radius proportional to the size.
-    var cornerRadius: CGFloat? = nil
 
     func path(in rect: CGRect) -> Path {
         switch kind {
@@ -1250,7 +1237,7 @@ struct CapacityDockGaugePath: Shape {
             Path(ellipseIn: rect)
         case .squircle:
             RoundedRectangle(
-                cornerRadius: cornerRadius ?? min(rect.width, rect.height) * Self.squircleCornerRatio,
+                cornerRadius: min(rect.width, rect.height) * 0.30,
                 style: .continuous
             )
             .path(in: rect)
@@ -1770,9 +1757,6 @@ struct CapacityDockRailShape: Shape {
     /// Corner radii stay locked to this length while the rail grows, so the
     /// expansion-anchor end (the top, when expanding down) does not reshape.
     var restLength: CGFloat? = nil
-    /// Convex corner radius on the free side, concentric with the gauges
-    /// inside (gauge radius + cross padding).
-    var freeRadius: CGFloat = 22
     var shoulderDepth: CGFloat = 34
     var attachmentProgress: CGFloat
     var edge: CapacityDockEdge
@@ -1839,28 +1823,20 @@ struct CapacityDockRailShape: Shape {
         // (right) edge — the body is inset from top and bottom by contactR, and
         // the flare connects that inset to the flush corner (Helm's structure).
         let referenceLength = restLength ?? bodyLength ?? rect.height
-        let freeR = Self.freeRadius(freeRadius, bodyWidth: bodyWidth, restLength: referenceLength)
+        let freeR = min(22, referenceLength / 2, bodyWidth * 0.45)
         // Not attached to an edge: a plain rounded pill, every corner rounded.
         // The concave contact-edge flares only exist once docked.
         if eased < 0.5 {
-            return Path(roundedRect: rect, cornerRadius: freeR, style: .continuous)
+            return Path(roundedRect: rect, cornerRadius: freeR)
         }
         // Scoop depth is taken from the resting length, not the live height, so
         // hover-expand only lengthens the midsection. The top curve stays put.
         let contactR = Self.contactRadius(
             bodyWidth: bodyWidth,
             restLength: referenceLength,
-            freeRadius: freeRadius,
             shoulderDepth: shoulderDepth,
             attachmentProgress: attachmentProgress
         )
-        // Convex corners use a longer, flatter entry (continuous curvature,
-        // like the gauges' `.continuous` squircle) where the edges leave room.
-        let freeReach = max(freeR, min(
-            freeR * Self.smoothReach,
-            rect.width - contactR,
-            referenceLength / 2 - contactR
-        ))
 
         var path = Path()
         // Flush top-right corner, then concave flare into the inset body top
@@ -1870,18 +1846,16 @@ struct CapacityDockRailShape: Shape {
             control: CGPoint(x: rect.maxX, y: rect.minY + contactR)
         )
         // Body top edge to the free-side top corner (convex)
-        Self.addSmoothCorner(
-            to: &path,
-            from: CGPoint(x: rect.minX + freeReach, y: rect.minY + contactR),
-            corner: CGPoint(x: rect.minX, y: rect.minY + contactR),
-            to: CGPoint(x: rect.minX, y: rect.minY + contactR + freeReach)
+        path.addLine(to: CGPoint(x: rect.minX + freeR, y: rect.minY + contactR))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX, y: rect.minY + contactR + freeR),
+            control: CGPoint(x: rect.minX, y: rect.minY + contactR)
         )
         // Free (left) edge down to the bottom-left corner (convex)
-        Self.addSmoothCorner(
-            to: &path,
-            from: CGPoint(x: rect.minX, y: rect.maxY - contactR - freeReach),
-            corner: CGPoint(x: rect.minX, y: rect.maxY - contactR),
-            to: CGPoint(x: rect.minX + freeReach, y: rect.maxY - contactR)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - contactR - freeR))
+        path.addQuadCurve(
+            to: CGPoint(x: rect.minX + freeR, y: rect.maxY - contactR),
+            control: CGPoint(x: rect.minX, y: rect.maxY - contactR)
         )
         // Body bottom edge, then concave flare out to the flush bottom-right
         path.addLine(to: CGPoint(x: rect.maxX - contactR, y: rect.maxY - contactR))
@@ -1894,38 +1868,15 @@ struct CapacityDockRailShape: Shape {
         return path
     }
 
-    /// How far past the radius a convex corner starts bending; 1 is a
-    /// plain quarter curve.
-    private static let smoothReach: CGFloat = 1.25
-    /// Handle length as a share of the way to the corner (2/3 is the
-    /// quadratic curve this replaced).
-    private static let smoothHandle: CGFloat = 0.62
-
-    private static func addSmoothCorner(to path: inout Path, from start: CGPoint, corner: CGPoint, to end: CGPoint) {
-        path.addLine(to: start)
-        path.addCurve(
-            to: end,
-            control1: CGPoint(x: start.x + (corner.x - start.x) * smoothHandle,
-                              y: start.y + (corner.y - start.y) * smoothHandle),
-            control2: CGPoint(x: end.x + (corner.x - end.x) * smoothHandle,
-                              y: end.y + (corner.y - end.y) * smoothHandle)
-        )
-    }
-
-    static func freeRadius(_ preferred: CGFloat, bodyWidth: CGFloat, restLength: CGFloat) -> CGFloat {
-        min(preferred, restLength / 2, bodyWidth * 0.45)
-    }
-
     static func contactRadius(
         bodyWidth: CGFloat,
         restLength: CGFloat,
-        freeRadius: CGFloat = 22,
         shoulderDepth: CGFloat,
         attachmentProgress: CGFloat
     ) -> CGFloat {
         let eased = ease(attachmentProgress)
         if eased < 0.5 { return 0 }
-        let freeR = Self.freeRadius(freeRadius, bodyWidth: bodyWidth, restLength: restLength)
+        let freeR = min(22, restLength / 2, bodyWidth * 0.45)
         return min(
             shoulderDepth * 0.6,
             restLength * 0.22,
