@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  # Manual release from the Actions tab (or API) when a tag cannot be pushed:
+  # builds the selected ref and creates the tag on that commit when publishing.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v0.3.4"
+        required: true
 
 permissions:
   contents: write
@@ -12,6 +19,8 @@ jobs:
   release:
     name: Build and publish
     runs-on: macos-15
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
@@ -19,12 +28,11 @@ jobs:
       - name: Test
         run: swift test
       - name: Package
-        run: Scripts/package-app.sh "${GITHUB_REF_NAME}"
+        run: Scripts/package-app.sh "${TAG}"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           DIST=".build/dist"
           PKG="${DIST}/CapacityDock-${VERSION}.pkg"
@@ -64,6 +72,7 @@ jobs:
             gh release upload "${TAG}" "${FILES[@]}" --clobber
           else
             gh release create "${TAG}" "${FILES[@]}" \
+              --target "${GITHUB_SHA}" \
               --title "Capacity Dock ${VERSION}" \
               --notes-file "${NOTES}"
           fi
