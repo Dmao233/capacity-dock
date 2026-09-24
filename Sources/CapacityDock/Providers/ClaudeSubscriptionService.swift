@@ -266,6 +266,7 @@ enum ClaudeSubscriptionService {
         let sevenDay: Window?
         let sevenDayOpus: Window?
         let sevenDaySonnet: Window?
+        let cloudCredits: DollarWindow?
         let limits: [Limit]?
 
         enum CodingKeys: String, CodingKey {
@@ -273,7 +274,23 @@ enum ClaudeSubscriptionService {
             case sevenDay = "seven_day"
             case sevenDayOpus = "seven_day_opus"
             case sevenDaySonnet = "seven_day_sonnet"
+            case cloudCredits = "iguana_necktie"
             case limits
+        }
+    }
+
+    /// A dollar-denominated window. Claude's usage payload shows cloud session
+    /// credits ("$64 of $100 left") under the codename `iguana_necktie`.
+    private struct DollarWindow: Decodable {
+        let resetsAt: String?
+        let limitDollars: Double?
+        let usedDollars: Double?
+        let remainingDollars: Double?
+        enum CodingKeys: String, CodingKey {
+            case resetsAt = "resets_at"
+            case limitDollars = "limit_dollars"
+            case usedDollars = "used_dollars"
+            case remainingDollars = "remaining_dollars"
         }
     }
 
@@ -334,7 +351,20 @@ enum ClaudeSubscriptionService {
             sevenDaySonnetPercent: r.sevenDaySonnet?.utilization,
             sevenDaySonnetResetsAt: parseDate(r.sevenDaySonnet?.resetsAt),
             scopedWeekly: scopedWeekly,
-            fetchedAt: Date()
+            fetchedAt: Date(),
+            cloudCredits: cloudCredits(r.cloudCredits)
+        )
+    }
+
+    private static func cloudCredits(_ window: DollarWindow?) -> SubscriptionUsage.CloudCredits? {
+        guard let window, let limit = window.limitDollars, limit > 0 else { return nil }
+        let used = window.usedDollars ?? window.remainingDollars.map { limit - $0 } ?? 0
+        let remaining = window.remainingDollars ?? limit - used
+        return SubscriptionUsage.CloudCredits(
+            limitDollars: limit,
+            usedDollars: max(used, 0),
+            remainingDollars: max(remaining, 0),
+            expiresAt: parseDate(window.resetsAt)
         )
     }
 

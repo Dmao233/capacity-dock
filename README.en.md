@@ -47,7 +47,7 @@
 
 Capacity Dock is a macOS 14+ menu-bar accessory with no Dock icon. It parks real AI quotas on the screen edge: unbound rings show `-`, and the app does not invent usage.
 
-Rest shows only the preferred ring. Hover expands the selected set and opens an inward detail card: progress, reset time, plan. Live sessions appear under `Source:` as a workspace label plus the conversation title. The menu bar shows today’s estimated cost. Left-click it for the usage overview; right-click opens Settings.
+Rest shows only the preferred ring: the outer ring is the weekly quota, with an inner ring for providers that have a 5-hour window. Hover expands the selected set and opens an inward detail card: a grouped list with large percentages, reset countdowns, and the plan badge; Claude also shows its cloud session credits. Running tasks are grouped by project at the bottom, styled after the Claude sidebar. The menu bar shows a monochrome icon and today’s estimated cost. Left-click it for the usage overview; right-click opens Settings.
 
 Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). This repository packages that surface as a small, installable app.
 
@@ -56,16 +56,19 @@ Rail geometry, hover, and the detail card come from [CodeBurn](https://github.co
 | | |
 | --- | --- |
 | Edge notch | Dock to left / right / top / bottom, or drag it into a floating pill |
-| Quota rings | Rest shows the preferred ring; hover expands the selected set and the detail card |
-| Detail | Progress, reset time, plan, connect; live rows show the workspace and conversation title |
+| Quota rings | Weekly outer ring plus a 5-hour inner ring; color by usage or by ring, custom colors, system accent by default |
+| Detail | Grouped list with large percentages, bars, reset countdowns, and plan; Claude shows remaining Cloud credits and their expiry |
+| Running tasks | Grouped by project, one line per task, styled after the Claude sidebar; Claude tasks use the desktop app’s session titles; hidden when nothing is running |
 | Local logins | Reads Codex, Claude, Cursor, Gemini, Antigravity, Copilot, Kimi Code, and Grok from this Mac; ClinePass and Z.ai can also take a key in Settings |
-| Settings | Sidebar for General / Usage / About / providers, plus a GitHub update check with one-click download and install |
+| Settings | System sidebar style: General / Usage / About / providers; live ring-style preview |
+| Updates | About → Download and Install: SHA256SUMS check, version and signature checks, rollback on failure, relaunch when done |
 | Usage overview | Today’s estimate in the menu bar; a compact popover with Today / 7 Days / This Month summaries |
-| Charts and details | Token composition, an independent 30-day trend, and an 81-day activity heatmap; hover for daily model usage and estimated cost |
+| Charts and details | Token composition, an independent 30-day trend, and an 81-day activity heatmap with active days, longest streak, and peak day; hover for daily model usage and estimated cost |
 | Models / providers | Switch grouping below the chart and expand token details; currency controls stay visible |
 | Appearance | Light, dark, or system theme; centered chart tabs with a sliding selection, number transitions, and row hover feedback; the refresh indicator stops when idle |
 | Currencies | 19 display currencies including USD, CNY, and EUR, with cached exchange rates and USD source estimates |
-| Menu-bar extra | Left-click for the overview, right-click for Settings; restore a hidden rail from here; no Dock slot |
+| Menu-bar extra | Monochrome icon + amount (¥ / $ for balances, a flame for today’s estimate); left-click for the overview, right-click for Settings; restore a hidden rail from here |
+| Low overhead | Incremental log parsing reads only new lines: the minute scan went from ~1.65 s to ~0.07 s and CPU from ~18% to ~2% |
 | Spaces | Follows every desktop; not pinned to the Space where it first appeared |
 | Chinese + English | Simplified Chinese when that is the system language |
 
@@ -100,7 +103,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.7
+Scripts/package-app.sh 0.3.8
 open .build/dist/CapacityDock.app
 ```
 
@@ -120,8 +123,8 @@ swift run
    - **Keep Expanded**: rest shows every selected ring; the card still closes on leave
    - **Dock to Edge**: Left / Right / Top / Bottom
    - **Hide Capacity Dock**: remove it from the screen; restore from the status item
-6. Click the external gear, or right-click the menu-bar `◉` for Settings. The sidebar has General / Usage / About / providers, and can check GitHub for a newer release. Left-click `◉` to open the local token bill under the icon.
-7. Hover a ring: if that provider is in use, a green live dot, workspace label, and conversation title appear under `Source:`, at most three rows.
+6. Click the external gear, or right-click the menu-bar item for Settings. The sidebar has General / Usage / About / providers; About can download and install a newer release in one click. Left-click the menu-bar item to open the local token bill under the icon.
+7. Hover a ring: if that provider has running tasks, they are listed at the bottom of the card, grouped by project: a muted project name, then one line per task (green spinner + title); hover a row for the full title.
 
 Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
 
@@ -140,9 +143,29 @@ Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. 
 
 Currency changes only affect display; source estimates remain in USD. Non-USD displays use exchange rates. If a rate cannot be fetched and no cached rate is available, the previous currency stays selected with an error message. Currency selection also updates the currency fields in `~/.config/codeburn/config.json`, preserving other settings for use alongside CodeBurn.
 
-## Running task details (0.3.2)
+## Running tasks (0.3.7)
 
-The widget detail card includes all detected running tasks and their count. Active cards widen slightly and wrap task titles. Height follows measured content, with vertical scrolling when the card reaches the available screen height. The card returns to its compact size when tasks finish. One shared activity animation avoids adding continuous animations for every task.
+The bottom of the detail card lists running tasks, styled after the Claude sidebar: grouped by project under a muted project name, one line per task with a green spinner, truncated titles, and a hover highlight showing the full title. Claude tasks use the desktop app’s (Code tab) session titles and originating project; worktrees group under their repository. The section is hidden when nothing is running; the card sizes to its content and scrolls past the available screen height.
+
+## Updates (0.3.7)
+
+When Settings → About finds a newer release, click **Download and Install**: the zip downloads with progress, is checked against the release’s `SHA256SUMS`, and the extracted app’s version and code signature are verified before it replaces the running copy and relaunches. A failed check leaves the installed app untouched; a failed replace restores it. If the app’s folder isn’t writable, it isn’t running from a .app, or macOS translocated it, **Open Release Page** remains.
+
+- 0.3.6 and earlier need one manual install of 0.3.7 or later.
+- Builds are ad-hoc signed and differ per build, so macOS may ask for Keychain access again after an update.
+- SHA-256 guards against corrupted downloads, not a replaced release.
+
+## Recent releases
+
+See the [CHANGELOG](CHANGELOG.md) for everything.
+
+| Version | Highlights |
+| --- | --- |
+| 0.3.8 | Claude detail card shows Cloud credits: remaining dollars, spent share, expiry date |
+| 0.3.7 | One-click download and install from About; running tasks restyled after the Claude sidebar; actionable hint when Claude credentials expire |
+| 0.3.6 | Shell back to the 0.3.3 shape; new app icon |
+| 0.3.5 | 22pt shell corners restored; the hover settings button sits past the shell’s end |
+| 0.3.4 | 5-hour inner ring and custom ring colors; redesigned detail card, usage panel, and Settings; incremental log parsing; Opus 5.5 / GPT-6 Sol pricing; monochrome menu-bar icon; activity stats |
 
 ## API balances (0.3.2)
 
@@ -167,7 +190,7 @@ Most providers are read from the login already on this Mac. Source credentials a
 | Provider | How it connects |
 | --- | --- |
 | Codex | Auto if `~/.codex/auth.json` exists (`codex login`) |
-| Claude | Auto if `~/.claude/.credentials.json` exists; Keychain-only logins need Connect once |
+| Claude | Auto if `~/.claude/.credentials.json` exists; Keychain-only logins need Connect once. The Claude CLI refreshes the token; if it expires, send any message with `claude` |
 | Cursor | Reads the signed-in Cursor.app session via `api2.cursor.sh` |
 | Grok | Auto if `~/.grok/auth.json` exists (`grok login`) |
 | Gemini | Reads `~/.gemini/oauth_creds.json` |
