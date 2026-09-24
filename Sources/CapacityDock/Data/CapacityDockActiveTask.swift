@@ -786,17 +786,45 @@ struct ClaudeLiveSessionStore {
                           modified >= cutoff else { continue }
                     ranked.append((
                         modified,
-                        CapacityDockActiveTask(
-                            id: file.lastPathComponent,
-                            title: LiveActivityPath.workspaceTitle(
-                                LiveActivityPath.claudeProjectPath(project.lastPathComponent)
-                            )
-                        )
+                        Self.task(for: file, projectFolder: project.lastPathComponent)
                     ))
                 }
             }
         }
         return ranked.sorted { $0.0 > $1.0 }.map(\.1)
+    }
+
+    /// The project folder name encodes the path with every "/" and "-" turned
+    /// into "-", so it cannot be decoded reliably ("capacity-dock" comes back
+    /// as "capacity/dock"). The transcript's own `cwd` is exact; the folder
+    /// name is only the fallback.
+    static func task(for file: URL, projectFolder: String) -> CapacityDockActiveTask {
+        let cwd = cachedWorkingDirectory(for: file)
+        let path = cwd ?? LiveActivityPath.claudeProjectPath(projectFolder)
+        if let worktree = LiveActivityPath.claudeWorktree(path) {
+            return CapacityDockActiveTask(
+                id: file.lastPathComponent,
+                title: worktree.name,
+                workspace: worktree.repository
+            )
+        }
+        return CapacityDockActiveTask(
+            id: file.lastPathComponent,
+            title: LiveActivityPath.workspaceTitle(path)
+        )
+    }
+
+    // NSCache is internally synchronized.
+    nonisolated(unsafe) private static let workingDirectories = NSCache<NSString, NSString>()
+
+    private static func cachedWorkingDirectory(for file: URL) -> String? {
+        let key = file.path as NSString
+        if let cached = workingDirectories.object(forKey: key) { return cached as String }
+        guard let cwd = LiveActivityPath.firstJSONString(named: "cwd", in: file, maxBytes: 262_144) else {
+            return nil
+        }
+        workingDirectories.setObject(cwd as NSString, forKey: key)
+        return cwd
     }
 }
 
@@ -912,6 +940,15 @@ enum LiveActivityPath {
         return last.isEmpty ? "Agent" : last
     }
 
+    /// `<repo>/.claude/worktrees/<name>` → ("repo", "name").
+    static func claudeWorktree(_ path: String) -> (repository: String, name: String)? {
+        let parts = URL(fileURLWithPath: path).pathComponents
+        guard parts.count >= 4,
+              parts[parts.count - 2] == "worktrees",
+              parts[parts.count - 3] == ".claude" else { return nil }
+        return (parts[parts.count - 4], parts[parts.count - 1])
+    }
+
     static func claudeProjectPath(_ folder: String) -> String {
         var value = folder
         if value.hasPrefix("-") { value.removeFirst() }
@@ -926,8 +963,9 @@ enum LiveActivityPath {
         guard let handle = try? FileHandle(forReadingFrom: file) else { return nil }
         defer { try? handle.close() }
         let data = handle.readData(ofLength: maxBytes)
-        guard let chunk = String(data: data, encoding: .utf8)
-            ?? String(data: data, encoding: .ascii) else { return nil }
+        // Lossy: the chunk can end mid-character, which would make a strict
+        // UTF-8 decode drop the whole chunk (and any non-ASCII path in it).
+        let chunk = String(decoding: data, as: UTF8.self)
         let needle = "\"\(key)\":\""
         guard let start = chunk.range(of: needle) else { return nil }
         var result = ""
