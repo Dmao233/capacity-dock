@@ -141,38 +141,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         button.imagePosition = .noImage
         let badge = MenubarBillStore.shared.badge
         let currency = DisplayCurrencyState.shared.snapshot
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        let composed = NSMutableAttributedString(string: "")
         let apiBalances = APIBalanceStore.shared
-        if let balance = apiBalances.menuText {
-            let image: NSImage?
+        let spend = badge.menubarText(currency: currency).trimmingCharacters(in: .whitespaces)
+        var segments: [StatusItemTitle.Segment] = []
+        if let balance = apiBalances.menuAmounts {
+            let icon: NSImage?
             if apiBalances.accounts.count == 1, apiBalances.accounts.first?.kind == .deepSeek {
-                image = ProviderIconCache.image(named: "deepseek")
+                icon = ProviderIconCache.image(named: "deepseek")
             } else {
-                image = NSImage(systemSymbolName: apiBalances.accounts.count == 1 ? "server.rack" : "creditcard", accessibilityDescription: "API 余额")
+                icon = StatusItemTitle.symbol(apiBalances.accounts.count == 1 ? "server.rack" : "creditcard")
             }
-            if let image {
-                let attachment = NSTextAttachment()
-                attachment.image = image
-                attachment.bounds = NSRect(x: 0, y: -2, width: 16, height: 13)
-                composed.append(NSAttributedString(attachment: attachment))
-            }
-            composed.append(NSAttributedString(string: " \(balance) ｜ ", attributes: [.font: font]))
+            segments.append(.init(icon: icon, text: balance, dimmed: apiBalances.menuIsStale))
         }
-        composed.append(NSAttributedString(string: "◉"))
-        var textAttrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .baselineOffset: -1.0
-        ]
-        if badge == .pending {
-            textAttrs[.foregroundColor] = NSColor.secondaryLabelColor
-        }
-        composed.append(NSAttributedString(string: badge.menubarText(currency: currency), attributes: textAttrs))
-        button.attributedTitle = composed
+        segments.append(.init(icon: StatusItemTitle.symbol("flame"), text: spend, dimmed: badge == .pending))
+        button.attributedTitle = StatusItemTitle.make(segments)
         button.setAccessibilityTitle(
             NSLocalizedString("Capacity Dock", comment: "") + (apiBalances.menuText.map { " API 剩余 " + $0 + " 今日消耗 " } ?? "") + badge.menubarText(currency: currency)
         )
-        button.toolTip = NSLocalizedString("Usage details. Right-click for settings.", comment: "") + (apiBalances.accounts.isEmpty ? "" : "\nAPI 余额与本地日志估算分别显示；↻ 表示上次余额，详情查看更新时间。")
+        button.toolTip = NSLocalizedString("Usage details. Right-click for settings.", comment: "") + (apiBalances.accounts.isEmpty ? "" : "\nAPI 余额与本地日志估算分别显示；数字变灰表示余额未及时刷新，详情查看更新时间。")
     }
 
     private func makeStatusMenu() -> NSMenu {
@@ -360,4 +346,78 @@ enum SettingsWindowPlacement {
         CGPoint(x: visibleFrame.minX + max(0, (visibleFrame.width - size.width) / 2),
                 y: visibleFrame.maxY - size.height - max(0, (visibleFrame.height - size.height) / 2))
     }
+}
+
+/// Menu-bar title: monochrome icon + value pairs with even spacing, drawn
+/// in the menu bar's own label colour so colourful provider marks and text
+/// glyphs no longer mix with the system items around them.
+@MainActor
+enum StatusItemTitle {
+    struct Segment {
+        var icon: NSImage?
+        var text: String
+        var dimmed = false
+    }
+
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .regular)
+    private static let iconHeight: CGFloat = 14
+    private static let iconTextGap: CGFloat = 4
+    private static let segmentGap: CGFloat = 10
+
+    static func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 12, weight: .medium))
+    }
+
+    static func make(_ segments: [Segment]) -> NSAttributedString {
+        let title = NSMutableAttributedString()
+        for (index, segment) in segments.enumerated() {
+            if index > 0 { title.append(spacer(segmentGap)) }
+            let color: NSColor = segment.dimmed ? .secondaryLabelColor : .labelColor
+            if let icon = segment.icon {
+                title.append(attachment(tinted(icon, color: color)))
+                title.append(spacer(iconTextGap))
+            }
+            title.append(NSAttributedString(string: segment.text, attributes: [
+                .font: font,
+                .foregroundColor: color
+            ]))
+        }
+        return title
+    }
+
+    /// Redrawn on every draw so the colour follows light / dark menu bars
+    /// and the wallpaper-tinted appearance.
+    static func tinted(_ image: NSImage, color: NSColor) -> NSImage {
+        let aspect = image.size.height > 0 ? image.size.width / image.size.height : 1
+        let size = NSSize(width: (iconHeight * aspect).rounded(), height: iconHeight)
+        let ink = TintInk(image: image, color: color)
+        let tinted = NSImage(size: size, flipped: false) { rect in
+            ink.image.draw(in: rect)
+            ink.color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
+        tinted.cacheMode = .never
+        return tinted
+    }
+
+    private static func attachment(_ image: NSImage) -> NSAttributedString {
+        let attachment = NSTextAttachment()
+        attachment.image = image
+        // Centre the icon on the digits' cap height rather than the baseline.
+        let y = ((font.capHeight - image.size.height) / 2).rounded()
+        attachment.bounds = NSRect(x: 0, y: y, width: image.size.width, height: image.size.height)
+        return NSAttributedString(attachment: attachment)
+    }
+
+    private static func spacer(_ width: CGFloat) -> NSAttributedString {
+        attachment(NSImage(size: NSSize(width: width, height: 1)))
+    }
+}
+
+/// Read-only image and dynamic colour handed to the drawing handler.
+private struct TintInk: @unchecked Sendable {
+    let image: NSImage
+    let color: NSColor
 }

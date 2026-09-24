@@ -191,6 +191,10 @@
 "Historical logs are cached after the first read." = "首次读取历史日志后，会缓存结果以加快切换。";
 
 "Last 81 days" = "近 81 天";
+"Active days" = "活跃天数";
+"Longest streak" = "最长连续";
+"Peak day" = "单日峰值";
+"%d days" = "%d 天";
 
 "%d more models" = "另有 %d 个模型";
 

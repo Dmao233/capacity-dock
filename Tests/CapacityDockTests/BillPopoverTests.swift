@@ -51,6 +51,18 @@ struct BillPopoverTests {
         #expect(days.allSatisfy { $0.tokens == nil })
     }
 
+    @Test("Activity summary counts active days, the longest run and the peak")
+    func activitySummary() {
+        let start = Date(timeIntervalSince1970: 0)
+        let tokens: [Int?] = [5, 7, nil, 3, 0, 9, 4, 2, nil]
+        let days = tokens.enumerated().map { index, value in
+            BillPopoverPresentation.Day(date: start.addingTimeInterval(Double(index) * 86400), tokens: value, label: "\(index)")
+        }
+        let stats = BillPopoverPresentation.activityStats(days)
+        #expect(stats == .init(activeDays: 6, totalDays: 9, longestStreak: 3, peak: 9))
+        #expect(BillPopoverPresentation.activityStats([]) == .init(activeDays: 0, totalDays: 0, longestStreak: 0, peak: 0))
+    }
+
     @Test("Hover breakdown isolates days and providers, reconciles tokens and preserves unknown pricing")
     func dailyModelBreakdown() throws {
         let now = TokenConsumptionClock.parseTimestamp("2026-09-04T12:00:00Z")!
