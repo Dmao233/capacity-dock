@@ -1143,7 +1143,8 @@ private struct CapacityDockProviderRow: View {
 
     private var accessibilityValue: String {
         guard let session else { return valueLabel }
-        return "Weekly \(valueLabel), 5h \(session.percentLabel)"
+        let period = headline.map { CapacityDockQuotaPresentation.displayLabel($0.label) } ?? "Usage"
+        return "\(period) \(valueLabel), 5h limit \(session.percentLabel)"
     }
 
     /// The label stays near-white while there is headroom and only picks up
@@ -1614,9 +1615,7 @@ private struct CapacityDockQuotaRow: View {
     let scale: CGFloat
 
     private var amount: Double { min(max(window.percent, 0), 1) }
-    private var isSession: Bool {
-        CapacityDockQuotaPresentation.displayLabel(window.label) == "5h limit"
-    }
+    private var isSession: Bool { window.isSessionWindow }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6 * scale) {
