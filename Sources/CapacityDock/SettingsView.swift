@@ -527,7 +527,7 @@ private struct AboutSettingsTab: View {
     var store: CapacityDockStore
     @State private var updateResult: UpdateCheckResult?
     @State private var isCheckingUpdate = false
-    private var installer = UpdateInstaller.shared
+    private var installer: UpdateInstaller { .shared }
 
     var body: some View {
         Form {
