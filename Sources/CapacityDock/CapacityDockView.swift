@@ -1826,7 +1826,9 @@ struct CapacityDockRailShape: Shape {
         // Not attached to an edge: a plain rounded pill, every corner rounded.
         // The concave contact-edge flares only exist once docked.
         if eased < 0.5 {
-            return Path(roundedRect: rect, cornerRadius: freeR)
+            // Floating, it is not a notch: keep the smaller pill radius so the
+            // flip to the docked outline at the midpoint stays a small step.
+            return Path(roundedRect: rect, cornerRadius: min(22, referenceLength / 2, bodyWidth * 0.45))
         }
         // Scoop depth is taken from the resting length, not the live height, so
         // hover-expand only lengthens the midsection. The top curve stays put.
