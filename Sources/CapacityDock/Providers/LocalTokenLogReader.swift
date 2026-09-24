@@ -458,7 +458,7 @@ private extension LocalTokenLogReader {
         if let tail = cache.tails[file.path], let identity, tail.identity == identity,
            UInt64(fingerprint.size) >= tail.consumed,
            let previous = cache.allEvents(for: file), previous.count >= tail.completeEventCount,
-           JSONLStreamer.byteBefore(tail.consumed, in: file) == 0x0A {
+           JSONLStreamer.prefixDigest(of: file, upTo: tail.consumed) == tail.prefixDigest {
             state = tail.state
             complete = Array(previous.prefix(tail.completeEventCount))
             offset = tail.consumed
@@ -474,13 +474,16 @@ private extension LocalTokenLogReader {
             }
         }
         cache.store(file: file, fingerprint: fingerprint, events: all)
-        if let identity {
+        if let identity, let digest = JSONLStreamer.prefixDigest(of: file, upTo: result.consumed) {
             cache.tails[file.path] = TokenLogDayCache.TailState(
                 identity: identity,
                 consumed: result.consumed,
+                prefixDigest: digest,
                 completeEventCount: complete.count,
                 state: state
             )
+        } else {
+            cache.tails[file.path] = nil
         }
         return all.filter { window.contains($0.date) }
     }
@@ -638,13 +641,27 @@ enum JSONLStreamer {
         String(decoding: bytes, as: UTF8.self)
     }
 
-    /// The byte just before `offset`, used to confirm a resume point still
-    /// sits at a line boundary (the file was appended to, not rewritten).
-    static func byteBefore(_ offset: UInt64, in url: URL) -> UInt8? {
-        guard offset > 0, let handle = try? FileHandle(forReadingFrom: url) else { return offset == 0 ? 0x0A : nil }
+    /// FNV-1a over the first and last 4 KB of `[0, end)`, used to confirm a
+    /// resume point: the file was appended to, not truncated or rewritten in
+    /// place. A rewrite that keeps both ends of the consumed region
+    /// byte-identical is not worth rereading every log to catch.
+    static func prefixDigest(of url: URL, upTo end: UInt64) -> UInt64? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
-        guard (try? handle.seek(toOffset: offset - 1)) != nil else { return nil }
-        return handle.readData(ofLength: 1).first
+        let sample: UInt64 = 4096
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        func mix(from start: UInt64, length: UInt64) -> Bool {
+            guard length > 0 else { return true }
+            guard (try? handle.seek(toOffset: start)) != nil else { return false }
+            let bytes = handle.readData(ofLength: Int(length))
+            guard bytes.count == Int(length) else { return false }
+            for byte in bytes { hash = (hash ^ UInt64(byte)) &* 0x100_0000_01b3 }
+            return true
+        }
+        let headLength = min(end, sample)
+        let tailStart = max(headLength, end > sample ? end - sample : 0)
+        guard mix(from: 0, length: headLength), mix(from: tailStart, length: end - tailStart) else { return nil }
+        return hash
     }
 }
 
@@ -767,6 +784,7 @@ struct TokenLogDayCache: Codable, Sendable {
     struct TailState: Sendable, Equatable {
         var identity: FileIdentity
         var consumed: UInt64
+        var prefixDigest: UInt64
         var completeEventCount: Int
         var state: ParserState
     }

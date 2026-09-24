@@ -126,7 +126,7 @@ final class CapacityDockStore: CapacityDockQuotaReading {
 
     func connectCapacityDockProvider(_ provider: CapacityDockProvider) async {
         guard Self.liveProviderIDs.contains(provider.id) else { return }
-        await refresh(provider, userInitiated: true)
+        await refresh(provider, userInitiated: true, startedAt: Date())
     }
 
     /// Providers are independent, so they refresh concurrently: one slow or
@@ -138,7 +138,7 @@ final class CapacityDockStore: CapacityDockQuotaReading {
         guard !due.isEmpty else { return }
         await withTaskGroup(of: Void.self) { group in
             for provider in due {
-                group.addTask { await self.refresh(provider, userInitiated: userInitiated) }
+                group.addTask { await self.refresh(provider, userInitiated: userInitiated, startedAt: now) }
             }
         }
         applyOverlayIfPresent()
@@ -163,7 +163,7 @@ final class CapacityDockStore: CapacityDockQuotaReading {
         }
     }
 
-    private func refresh(_ provider: CapacityDockProvider, userInitiated: Bool) async {
+    private func refresh(_ provider: CapacityDockProvider, userInitiated: Bool, startedAt: Date) async {
         loading.insert(provider.id)
         defer { loading.remove(provider.id) }
         let previous = summaries[provider.id]
@@ -209,8 +209,9 @@ final class CapacityDockStore: CapacityDockQuotaReading {
                 previous: previous
             )
         }
-        nextRefresh[provider.id] = Date().addingTimeInterval(
-            LiveRefreshSchedule.interval(after: summaries[provider.id]?.connection)
+        nextRefresh[provider.id] = LiveRefreshSchedule.deadline(
+            after: summaries[provider.id]?.connection,
+            startedAt: startedAt
         )
         if userInitiated {
             applyOverlayIfPresent()
@@ -495,8 +496,19 @@ enum LiveRefreshSchedule {
         }
     }
 
+    /// Counted from when the polling cycle started, not when the request
+    /// finished: a 10 s request must not push the next check past the
+    /// following 60 s timer tick and skip a whole minute.
+    static func deadline(after connection: QuotaSummary.Connection?, startedAt: Date) -> Date {
+        startedAt.addingTimeInterval(interval(after: connection))
+    }
+
+    /// Timer ticks and the main-actor hop jitter by a moment; a deadline that
+    /// lands a few seconds after a tick must not wait a whole extra minute.
+    static let tickSlack: TimeInterval = 5
+
     static func isDue(_ next: Date?, now: Date) -> Bool {
         guard let next else { return true }
-        return now >= next
+        return now.addingTimeInterval(tickSlack) >= next
     }
 }
