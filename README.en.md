@@ -5,202 +5,159 @@
 <h1 align="center">Capacity Dock</h1>
 
 <p align="center">
-  Quota rings on the Mac display edge.<br>
-  Glance at real Cursor, Codex, Grok, and other usage; hover for the detail card.
+  AI quota rings on the edge of your screen.<br>
+  See real Claude, Codex, Cursor, Grok, and other usage at a glance; hover for details and running tasks.
 </p>
 
 <p align="center">
   <a href="https://github.com/Dmao233/capacity-dock/releases/latest"><img src="https://img.shields.io/github/v/release/Dmao233/capacity-dock" alt="Release"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14+">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
-  <a href="README.md"><img src="https://img.shields.io/badge/docs-简体中文-lightgrey.svg" alt="简体中文"></a>
+  <a href="README.md"><img src="https://img.shields.io/badge/文档-中文-lightgrey.svg" alt="中文"></a>
 </p>
 
 <p align="center">
-  <a href="README.md">简体中文</a>
+  <a href="https://github.com/Dmao233/capacity-dock/releases/latest"><b>Download</b></a>
   ·
-  <a href="#install">Install</a>
+  <a href="#features">Features</a>
+  ·
+  <a href="#install-and-update">Install</a>
   ·
   <a href="#usage">Usage</a>
   ·
-  <a href="https://github.com/Dmao233/capacity-dock/releases/latest">Download</a>
+  <a href="#providers-and-data">Data sources</a>
   ·
-  <a href="LICENSE">MIT</a>
+  <a href="#releases">Releases</a>
+  ·
+  <a href="README.md">中文</a>
 </p>
 
 <p align="center">
-  <img src="assets/demo.gif" width="420" alt="Hover expands the notch and opens the detail card">
+  <img src="assets/demo.gif" width="420" alt="Hover expands the rail and opens the detail card">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/rest-close.png" width="280" alt="Rest close-up: ring and percent">
+  <img src="assets/screenshots/rest-close.png" width="200" alt="Rest close-up: quota ring and percentage">
   &nbsp;
-  <img src="assets/screenshots/rest.png" width="280" alt="Rest: one preferred ring on the right edge">
-</p>
-
-<p align="center">
-  <img src="assets/screenshots/hover.png" width="280" alt="Hover: detail card and selected rings">
+  <img src="assets/screenshots/rest.png" width="200" alt="Rest: one preferred ring on the right edge">
   &nbsp;
-  <img src="assets/screenshots/hover-detail.png" width="280" alt="Detail: progress, plan, reset time">
+  <img src="assets/screenshots/hover.png" width="200" alt="Hover: selected providers expanded">
+  &nbsp;
+  <img src="assets/screenshots/hover-detail.png" width="200" alt="Detail card: quota, reset time, plan">
 </p>
 
-## What it is
+## Highlights
 
-Capacity Dock is a macOS 14+ menu-bar accessory with no Dock icon. It parks real AI quotas on the screen edge: unbound rings show `-`, and the app does not invent usage.
-
-Rest shows only the preferred ring: the outer ring is the weekly quota, with an inner ring for providers that have a 5-hour window. Hover expands the selected set and opens an inward detail card: a grouped list with large percentages, reset countdowns, and the plan badge; Claude also shows its cloud session credits. Running tasks are grouped by project at the bottom, styled after the Claude sidebar. The menu bar shows a monochrome icon and today’s estimated cost. Left-click it for the usage overview; right-click opens Settings.
-
-Rail geometry, hover, and the detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT). This repository packages that surface as a small, installable app.
+- **Real quotas only**: reads the CLIs and apps you are already signed in to; unbound providers show `-`, and usage is never invented.
+- **Two rings, two limits**: the outer ring is the weekly quota, the inner ring the 5-hour window; color by usage or by ring.
+- **Running tasks**: listed at the bottom of the detail card, grouped by project, styled after the Claude sidebar.
+- **Menu-bar bill**: today’s API-equivalent estimate and API balances stay in the menu bar; click for a Today / 7 Days / This Month overview.
+- **One-click updates**: About downloads and installs new releases with verification and automatic rollback.
+- **Light on resources**: local logs are parsed incrementally; the minute scan takes about 0.07 s.
 
 ## Features
 
+### Edge rail
+
 | | |
 | --- | --- |
-| Edge notch | Dock to left / right / top / bottom, or drag it into a floating pill |
-| Quota rings | Weekly outer ring plus a 5-hour inner ring; color by usage or by ring, custom colors, system accent by default |
-| Detail | Grouped list with large percentages, bars, reset countdowns, and plan; Claude shows remaining Cloud credits and their expiry |
-| Running tasks | Grouped by project, one line per task, styled after the Claude sidebar; Claude tasks use the desktop app’s session titles; hidden when nothing is running |
-| Local logins | Reads Codex, Claude, Cursor, Gemini, Antigravity, Copilot, Kimi Code, and Grok from this Mac; ClinePass and Z.ai can also take a key in Settings |
-| Settings | System sidebar style: General / Usage / About / providers; live ring-style preview |
-| Updates | About → Download and Install: SHA256SUMS check, version and signature checks, rollback on failure, relaunch when done |
-| Usage overview | Today’s estimate in the menu bar; a compact popover with Today / 7 Days / This Month summaries |
-| Charts and details | Token composition, an independent 30-day trend, and an 81-day activity heatmap with active days, longest streak, and peak day; hover for daily model usage and estimated cost |
-| Models / providers | Switch grouping below the chart and expand token details; currency controls stay visible |
-| Appearance | Light, dark, or system theme; centered chart tabs with a sliding selection, number transitions, and row hover feedback; the refresh indicator stops when idle |
-| Currencies | 19 display currencies including USD, CNY, and EUR, with cached exchange rates and USD source estimates |
-| Menu-bar extra | Monochrome icon + amount (¥ / $ for balances, a flame for today’s estimate); left-click for the overview, right-click for Settings; restore a hidden rail from here |
-| Low overhead | Incremental log parsing reads only new lines: the minute scan went from ~1.65 s to ~0.07 s and CPU from ~18% to ~2% |
-| Spaces | Follows every desktop; not pinned to the Space where it first appeared |
-| Chinese + English | Simplified Chinese when that is the system language |
+| Docking | Left / right / top / bottom edge, or drag into the desktop for a rounded pill; shown on every Space |
+| Rest and hover | Rest shows the preferred ring; hover expands the selected providers; right-click to keep it expanded |
+| Rings | Weekly outer ring plus a 5-hour inner ring where available; color by usage or by ring, custom colors, system accent by default |
+| Look | Graphite (default) or Liquid Glass material; circle or squircle gauges; live preview in Settings |
 
-## Install
+### Detail card
 
-Needs **macOS 14 Sonoma** or later.
-
-### Download
-
-From [Releases](https://github.com/Dmao233/capacity-dock/releases/latest) grab one of:
-
-| File | How to install |
+| | |
 | --- | --- |
-| `CapacityDock-*.pkg` | Double-click to install into `/Applications`, then it launches |
-| `CapacityDock-*.dmg` | Open and drag the app onto **Applications** |
-| `CapacityDock-*.zip` | Unzip and drop `CapacityDock.app` into `/Applications` |
+| Quotas | Grouped list with large percentages, bars, reset time and countdown, and the plan badge |
+| Claude cloud credits | Remaining Cloud credits, spent share, and expiry date |
+| Running tasks | Grouped by project, one line per task; Claude tasks use the desktop app’s session titles; hidden when nothing is running |
+| Connection | Clear actions and guidance when a provider needs connecting or signing in again |
 
-The build is an ad-hoc-signed universal binary (Apple Silicon + Intel). After a browser download Gatekeeper may block the first launch: **Right-click → Open** the `.pkg` or app, or:
+### Menu bar and usage overview
+
+| | |
+| --- | --- |
+| Menu bar | Monochrome icon plus amounts: ¥ / $ for API balances, a flame before today’s estimate; left-click for the overview, right-click for Settings |
+| Period summaries | Cost, call count, and input / output / cache totals for Today / 7 Days / This Month |
+| Charts | Token composition, a 30-day trend, and an 81-day activity heatmap with active days, longest streak, and peak day; hover for per-model usage and cost |
+| Breakdown | Group by model or provider and expand token details |
+| Appearance | Dark by default, or light / follow system; system accent color; honors Reduce Motion |
+| Currencies | 19 display currencies including USD, CNY, and EUR, with cached rates; source estimates stay in USD; can sync CodeBurn’s currency setting |
+
+### API balances
+
+Balances for DeepSeek official accounts and custom HTTPS relays can appear in the menu bar or as a ring on the rail. Keys are stored in the macOS Keychain. See [API balance setup](#api-balance-setup) below.
+
+### Settings and updates
+
+| | |
+| --- | --- |
+| Settings window | System sidebar: General / Usage / API 账户 (API accounts) / About / each provider |
+| Updates | About → **Download and Install**: checked against `SHA256SUMS`, version and code signature verified, the old app restored if replacing fails, relaunch when done |
+| Language | Simplified Chinese when that is the system language, English otherwise |
+
+## Install and update
+
+Needs **macOS 14 Sonoma** or later, on Apple Silicon or Intel.
+
+Download one from [Releases](https://github.com/Dmao233/capacity-dock/releases/latest):
+
+| File | Use |
+| --- | --- |
+| `CapacityDock-*.pkg` | Double-click to install into `/Applications`; opens when done |
+| `CapacityDock-*.dmg` | Open and drag the app to **Applications** |
+| `CapacityDock-*.zip` | Unzip and move `CapacityDock.app` into `/Applications` or `~/Applications` |
+
+The app is ad-hoc signed. Gatekeeper may block the first launch after a browser download: **right-click → Open** the package or app in Finder, or:
 
 ```bash
 xattr -d com.apple.quarantine ~/Downloads/CapacityDock-*.pkg
-xattr -d com.apple.quarantine /Applications/CapacityDock.app
 ```
 
-The app is an `LSUIElement`, so it never appears in the Dock. A `◉` status item can show the rail again, open Settings, or quit.
+The app has no Dock icon, only a menu-bar item.
 
-### Build from source
+**Updating**
 
-Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)).
-
-```bash
-git clone https://github.com/Dmao233/capacity-dock.git
-cd capacity-dock
-swift test
-Scripts/package-app.sh 0.3.8
-open .build/dist/CapacityDock.app
-```
-
-For day-to-day development:
-
-```bash
-swift run
-```
+- 0.3.7 and later: Settings → About → **Download and Install**.
+- 0.3.6 and earlier: install a newer release by hand once; later updates work from About.
+- If the app’s folder isn’t writable, About offers **Open Release Page** instead.
+- Each build has a different ad-hoc signature, so macOS may ask for Keychain access again after an update; choose **Always Allow**.
 
 ## Usage
 
-1. First launch docks to the right edge with Grok as the preferred ring (change this in Settings).
-2. Park the pointer on the notch: after a short delay it expands and the detail card opens.
-3. Left-click a ring to make it preferred and show that provider’s card. A click does **not** pin expansion.
-4. Leave the pointer: the card closes; without Keep Expanded the rail retracts to one ring.
-5. Right-click the notch:
-   - **Keep Expanded**: rest shows every selected ring; the card still closes on leave
-   - **Dock to Edge**: Left / Right / Top / Bottom
-   - **Hide Capacity Dock**: remove it from the screen; restore from the status item
-6. Click the external gear, or right-click the menu-bar item for Settings. The sidebar has General / Usage / About / providers; About can download and install a newer release in one click. Left-click the menu-bar item to open the local token bill under the icon.
-7. Hover a ring: if that provider has running tasks, they are listed at the bottom of the card, grouped by project: a muted project name, then one line per task (green spinner + title); hover a row for the full title.
+1. First launch docks to the right edge with Grok as the preferred ring; change it in Settings → General.
+2. Rest the pointer on the rail: after a short delay the other rings expand and the detail card opens inward.
+3. Left-click a ring to make it preferred and show its details. A click does not pin the expansion.
+4. Move away: the card closes; without Keep Expanded the rail retracts to one ring.
+5. Right-click the rail: **Keep Expanded**, **Dock to Edge** (left / right / top / bottom), **Hide Capacity Dock** (restore from the menu-bar item).
+6. Drag the rail to change edges; drag it into the desktop for a pill.
+7. Menu-bar item: left-click for the usage overview, right-click for Settings.
 
-Drag to change edges. Contact with an edge grows the scoop; pulling it into the desktop turns it into a rounded pill with the settings bar at the tail.
+## Providers and data
 
-## Usage overview (0.3.1)
-
-Click the menu-bar amount to open the bill directly below it. The existing edge rings continue to show subscription quotas.
-
-- **Consistent surfaces:** The menu-bar popover and Settings Usage page share themes, summaries, charts, hover details, currency controls, and cached reads.
-- **Period summaries:** Today, 7 Days, and This Month control the main cost, call count, input / output / cache totals, and the model/provider list.
-- **Independent trend:** The chart always covers the last 30 days, even with Today selected. Hover a bar for the date, daily total, model usage, and estimated cost.
-- **Activity heatmap:** The last 81 days appear as three rows of fixed-size squares with four intensity levels. Hover for daily details. Missing records are distinguished from measured zero usage.
-- **Appearance:** Dark violet is the default across the bill and all Settings pages. Use the top-right More menu for light, dark, or system theme, and the footer for currency. Period and chart controls share sliding selection and hover feedback; period controls stay left-aligned and chart controls are centered. Model/provider underlines animate consistently. Animations respect Reduce Motion.
-- **Historical loading:** File fingerprints reuse parsed logs, duplicate requests share work, and streaming releases temporary memory promptly. Unchanged caches are not rewritten; per-entry encoding and early period filtering reduce temporary allocations. The first scan of a large history can still take time and shows progress; later period switches reuse caches. Background checks run once per minute, while opening a page uses a 30-second freshness window and manual reload bypasses it.
-
-Local bills read token logs from Codex, Claude, Grok, Cursor, and Cursor Agent. Amounts are **API-equivalent estimates, not subscription bills or actual charges**. Estimates include `gpt-6-astra` and `grok-4.7` (including the logged id `grok-4.7-build`) rates and their long-context tiers. Unpriced models retain their usage; unknown prices are not presented as confirmed zero cost.
-
-Currency changes only affect display; source estimates remain in USD. Non-USD displays use exchange rates. If a rate cannot be fetched and no cached rate is available, the previous currency stays selected with an error message. Currency selection also updates the currency fields in `~/.config/codeburn/config.json`, preserving other settings for use alongside CodeBurn.
-
-## Running tasks (0.3.7)
-
-The bottom of the detail card lists running tasks, styled after the Claude sidebar: grouped by project under a muted project name, one line per task with a green spinner, truncated titles, and a hover highlight showing the full title. Claude tasks use the desktop app’s (Code tab) session titles and originating project; worktrees group under their repository. The section is hidden when nothing is running; the card sizes to its content and scrolls past the available screen height.
-
-## Updates (0.3.7)
-
-When Settings → About finds a newer release, click **Download and Install**: the zip downloads with progress, is checked against the release’s `SHA256SUMS`, and the extracted app’s version and code signature are verified before it replaces the running copy and relaunches. A failed check leaves the installed app untouched; a failed replace restores it. If the app’s folder isn’t writable, it isn’t running from a .app, or macOS translocated it, **Open Release Page** remains.
-
-- 0.3.6 and earlier need one manual install of 0.3.7 or later.
-- Builds are ad-hoc signed and differ per build, so macOS may ask for Keychain access again after an update.
-- SHA-256 guards against corrupted downloads, not a replaced release.
-
-## Recent releases
-
-See the [CHANGELOG](CHANGELOG.md) for everything.
-
-| Version | Highlights |
-| --- | --- |
-| 0.3.8 | Claude detail card shows Cloud credits: remaining dollars, spent share, expiry date |
-| 0.3.7 | One-click download and install from About; running tasks restyled after the Claude sidebar; actionable hint when Claude credentials expire |
-| 0.3.6 | Shell back to the 0.3.3 shape; new app icon |
-| 0.3.5 | 22pt shell corners restored; the hover settings button sits past the shell’s end |
-| 0.3.4 | 5-hour inner ring and custom ring colors; redesigned detail card, usage panel, and Settings; incremental log parsing; Opus 5.5 / GPT-6 Sol pricing; monochrome menu-bar icon; activity stats |
-
-## API balances (0.3.2)
-
-Under **API 账户** in Settings, click **添加账户** to open the account editor, fill in a DeepSeek account or custom relay, then click **保存并查询**. Cancel creates no account; editing also opens this separate sheet. Saving stores the key in macOS Keychain and queries the configured balance endpoint. Leave the key empty when editing to retain it; changing the endpoint requires entering the destination's key again.
-
-- A single account shows **provider icon remaining balance | ◉ today's existing cost estimate**. Without API accounts the menu bar stays unchanged.
-- In **General → Dock providers**, select **DeepSeek** or **自定义中转站** (custom relays), optionally as the preferred provider. The widget shows the original-currency balance under its icon; hover for full amounts, topped-up / granted credits, and update times. It does not invent a quota percentage. Accounts of the same platform are grouped by currency; mixed currencies are shown in the detail card. The widget shares the menu bar's cache without adding automatic requests.
-- The existing today / last seven days / month totals remain local-log API-equivalent estimates, not actual API debits. Balances are never added to those costs.
-- DeepSeek uses `/user/balance`, preserving CNY / USD and showing topped-up and granted credits in account details.
-- Relays support an HTTPS GET endpoint with Bearer authentication, a JSON amount path (such as `data.balance` or `data.0.quota`), currency, and a unit divisor. Use `100` for cents; consult the relay's documentation for internal quota units.
-- No automatic endpoint probing, Cookie authentication, POST, extra authentication headers, or custom scripts. OpenAI-compatible inference does not imply a balance API.
-- Multiple accounts aggregate separately by currency. Do not add multiple keys belonging to the same balance account. If any account has no valid result, the total shows `—` rather than a partial sum.
-- Refreshes approximately every minute, backing off to five minutes on failure. `↻` marks the previous balance; expand the balance strip for timestamps and errors. Failures never become zero.
-- Small separate caches, coalesced serial refreshes, a 15-second request timeout, a 256 KiB response limit, and no credential forwarding on redirects. Balance refreshes do not rescan token logs.
-
-This version reads balances. It does not infer actual spending from balance changes or implement relay historical debit ledgers.
-
-## Quota data
-
-Most providers are read from the login already on this Mac. Source credentials are not copied into Capacity Dock’s Keychain. ClinePass and Z.ai use an API key saved from Settings.
+Most providers are read from CLIs or apps already signed in on this Mac; credentials are not copied elsewhere.
 
 | Provider | How it connects |
 | --- | --- |
-| Codex | Auto if `~/.codex/auth.json` exists (`codex login`) |
-| Claude | Auto if `~/.claude/.credentials.json` exists; Keychain-only logins need Connect once. The Claude CLI refreshes the token; if it expires, send any message with `claude` |
-| Cursor | Reads the signed-in Cursor.app session via `api2.cursor.sh` |
-| Grok | Auto if `~/.grok/auth.json` exists (`grok login`) |
+| Claude | Automatic when `~/.claude/.credentials.json` exists; Keychain-only logins need Connect once in the detail card. The Claude CLI refreshes the token; if it expires, send any message with `claude` |
+| Codex | Automatic when `~/.codex/auth.json` exists (`codex login`) |
+| Cursor | Reads the local session of a signed-in Cursor.app |
+| Grok | Automatic when `~/.grok/auth.json` exists (`grok login`) |
 | Gemini | Reads `~/.gemini/oauth_creds.json` |
-| Copilot | Reads a GitHub token already on this Mac (Copilot / `gh` / env) |
-| Antigravity | Probes a running language server / `agy` |
+| Copilot | Reads a GitHub token from Copilot, `gh`, or the environment |
+| Antigravity | Probes the local language server / `agy` |
 | Kimi Code | Reads `~/.kimi-code/credentials/kimi-code.json` |
-| ClinePass | Paste an API key in Settings, then Save & Connect |
-| Z.ai | Settings API key, or an existing Pi login |
+| ClinePass | Paste an API key in Settings, then Save and Connect |
+| Z.ai | API key in Settings, or a local Pi login |
 
-Unbound rings show `-`. You can still overlay:
+**Cost estimates** come from local token logs for Codex, Claude, Grok, Cursor, and Cursor Agent. Amounts are **API-equivalent estimates, not subscription bills or actual charges**. Unpriced models count usage without being treated as free.
+
+<details>
+<summary><b>Override quotas by hand (quota.json)</b></summary>
+
+Quotas written in this file override what the app reads:
 
 ```
 ~/Library/Application Support/CapacityDock/quota.json
@@ -221,29 +178,66 @@ See [`docs/quota.example.json`](docs/quota.example.json):
 }
 ```
 
-`percent` is 0…1. After saving, click **Reload quota.json** in Settings, or relaunch. This app does not invent usage.
+`percent` ranges from 0 to 1. After saving, click **Reload quota.json** in Settings or restart the app.
 
-## Develop
+</details>
 
-```
-Sources/CapacityDock/     notch, hover, detail, live quotas, settings
-Tests/CapacityDockTests/  Swift Testing for geometry, interaction, preferences
-Scripts/package-app.sh    ad-hoc-signed .app
-assets/                   app icon, screenshots, demo GIF / MP4
-```
+<details>
+<summary><b id="api-balance-setup">API balance setup</b></summary>
 
-After changing the silhouette or hover:
+In Settings → **API 账户** (API accounts), click Add Account, fill in a DeepSeek official account or a custom relay, then Save and Query. The key goes into the macOS Keychain. When editing, leave the key empty to keep it; changing the endpoint requires re-entering the key.
+
+- **DeepSeek**: uses the official `/user/balance`, keeps CNY / USD as returned, and shows topped-up and granted balances.
+- **Custom relay**: an HTTPS GET endpoint with `Authorization: Bearer <key>`. Configure the full URL, the amount’s JSON path (e.g. `data.balance`, `data.0.quota`), the currency, and a unit divisor — `100` for amounts in cents; follow the relay’s docs for custom quota units. Cookies, POST, extra auth headers, and scripts are not supported.
+- **Display**: accounts are summed per currency and never mixed; the total shows `—` while any account hasn’t been fetched. Balances have no cap, so no percentage is shown.
+- **Refresh**: about once a minute, backing off to five minutes on failure, or on demand. `↻` marks a last-known balance. 15 s timeout, 256 KiB response limit, and credentials are not forwarded on redirects.
+- Today’s cost in the menu bar is still the local API-equivalent estimate; balances are never added to it.
+
+</details>
+
+## Releases
+
+See the [CHANGELOG](CHANGELOG.md) for everything.
+
+| Version | Highlights |
+| --- | --- |
+| 0.3.8 | Claude detail card shows Cloud credits: remaining dollars, spent share, expiry date |
+| 0.3.7 | One-click download and install from About; running tasks restyled after the Claude sidebar; actionable hint when Claude credentials expire |
+| 0.3.6 | Shell back to the 0.3.3 shape; new app icon |
+| 0.3.5 | 22pt shell corners restored; the hover settings button sits past the shell’s end |
+| 0.3.4 | 5-hour inner ring and custom ring colors; redesigned detail card, usage panel, and Settings; incremental log parsing; Opus 5.5 / GPT-6 Sol pricing; monochrome menu-bar icon |
+| 0.3.2 | DeepSeek and custom relay balances; task cards size to their content |
+| 0.3.1 | Menu-bar usage overview, trend and activity charts, 19 display currencies |
+
+## Build from source
+
+Needs **Swift 6** (bundled with Xcode 16, or from [swift.org](https://www.swift.org/install/macos/)).
 
 ```bash
+git clone https://github.com/Dmao233/capacity-dock.git
+cd capacity-dock
 swift test
+Scripts/package-app.sh 0.3.8
+open .build/dist/CapacityDock.app
 ```
+
+For day-to-day work, `swift run`.
+
+```
+Sources/CapacityDock/     rail, detail card, provider readers, bill, settings, updates
+Tests/CapacityDockTests/  Swift Testing unit tests
+Scripts/package-app.sh    builds the ad-hoc-signed .app / pkg / dmg / zip
+assets/                   app icon, screenshots, demo animation
+```
+
+Pushing a `v*` tag runs GitHub Actions: tests first, then packaging and the Release.
 
 ## Credits
 
-- Extracted from [CodeBurn](https://github.com/getagentseal/codeburn). See [NOTICE](NOTICE).
-- The usage overview draws on CodeBurn’s layout, hover details, and caching strategy. Activity cells and motion reference [Rare UI](https://www.rareui.com/components/githubactivity), implemented natively in SwiftUI.
-- Design: [CodeBurn Capacity Dock on Figma](https://www.figma.com/design/RxGVxLJ3okxSKYnquk4ysI/CodeBurn-Capacity-Dock)
+- The rail geometry, hover, and detail card come from [CodeBurn](https://github.com/getagentseal/codeburn)’s Capacity Dock (MIT); see [NOTICE](NOTICE).
+- The usage overview follows CodeBurn’s layout, hover details, and caching; the activity squares follow [Rare UI](https://www.rareui.com/components/githubactivity), rebuilt in native SwiftUI.
+- Design file: [CodeBurn Capacity Dock on Figma](https://www.figma.com/design/RxGVxLJ3okxSKYnquk4ysI/CodeBurn-Capacity-Dock)
 
 ## License
 
-[MIT](LICENSE). Copyright (c) 2026 AgentSeal and CenFangyu.
+[MIT](LICENSE). Copyright (c) 2026 AgentSeal, CenFangyu.
