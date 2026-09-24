@@ -13,7 +13,6 @@ enum CapacityDockMetrics {
     // rings inside, settings orb revealed with the expand animation.
     private static let baseRailWidth: CGFloat = 72
     private static let baseHorizontalRailWidth: CGFloat = 78
-    private static let baseEdgeShoulderDepth: CGFloat = 72
     private static let baseRowHeight: CGFloat = 62
     private static let baseRowSpacing: CGFloat = 10
     private static let baseRailAlongPad: CGFloat = 10
@@ -46,7 +45,6 @@ enum CapacityDockMetrics {
 
     static func railWidth(scale: CGFloat) -> CGFloat { points(baseRailWidth, scale) }
     static func horizontalRailWidth(scale: CGFloat) -> CGFloat { points(baseHorizontalRailWidth, scale) }
-    static func edgeShoulderDepth(scale: CGFloat) -> CGFloat { points(baseEdgeShoulderDepth, scale) }
     static func rowHeight(scale: CGFloat) -> CGFloat { points(baseRowHeight, scale) }
     static func rowSpacing(scale: CGFloat) -> CGFloat { points(baseRowSpacing, scale) }
     static func railAlongPad(scale: CGFloat) -> CGFloat { points(baseRailAlongPad, scale) }
@@ -216,7 +214,6 @@ final class CapacityDockViewModel {
             bodyWidth: railWidth,
             bodyLength: bodyLength,
             restLength: restingBodyLength,
-            shoulderDepth: CapacityDockMetrics.edgeShoulderDepth(scale: scale),
             attachmentProgress: attachmentProgress,
             edge: attachmentEdge
         )
@@ -226,7 +223,6 @@ final class CapacityDockViewModel {
         CapacityDockRailShape.contactRadius(
             bodyWidth: railWidth,
             restLength: restingBodyLength,
-            shoulderDepth: CapacityDockMetrics.edgeShoulderDepth(scale: scale),
             attachmentProgress: attachmentProgress
         )
     }
@@ -462,17 +458,21 @@ final class CapacityDockViewModel {
     var flareCompensation: CGFloat {
         let p = min(max(attachmentProgress, 0), 1)
         let eased = p * p * (3 - 2 * p)
-        return CapacityDockMetrics.edgeShoulderDepth(scale: scale) * 0.6 * eased
+        return railWidth * CapacityDockRailShape.notchConcaveRatio * eased
     }
     /// Keep first/last rings out of the scooped corners and the nested
     /// settings orb. Derived from flare depth (not live contactR) so it
     /// cannot recurse through restLength.
     var railAlongPad: CGFloat {
-        let base = CapacityDockMetrics.railAlongPad(scale: scale) + flareCompensation
+        let pad = CapacityDockMetrics.railAlongPad(scale: scale)
+        let base = pad + flareCompensation
         guard flareCompensation > 1 else { return base }
         let orb = CapacityDockMetrics.settingsCapOrbSize(scale: scale)
+        // Same nest as `CapacityDockSettingsCapShape.gearRect`: the orb's
+        // centre sits this far in from the body end. Rings clear its far
+        // edge by the normal padding.
         let nest = min(max(flareCompensation * 0.33, orb * 0.25), orb * 0.4)
-        return max(base, nest + orb)
+        return max(base, nest + orb / 2 + pad)
     }
     var railCrossPad: CGFloat { CapacityDockMetrics.railCrossPad(scale: scale) }
     var detailWidth: CGFloat {
@@ -1757,7 +1757,6 @@ struct CapacityDockRailShape: Shape {
     /// Corner radii stay locked to this length while the rail grows, so the
     /// expansion-anchor end (the top, when expanding down) does not reshape.
     var restLength: CGFloat? = nil
-    var shoulderDepth: CGFloat = 34
     var attachmentProgress: CGFloat
     var edge: CapacityDockEdge
 
@@ -1815,15 +1814,15 @@ struct CapacityDockRailShape: Shape {
         // The system-notch technique (Helm / notchi): one quad curve per corner,
         // control point at the corner. Free (left) side has convex rounded
         // corners; the contact (right) side necks concavely into the touched
-        // edge when docked. Depth scales with panel length and is clamped below
-        // half of it, so a short single-item rail necks gently and never lets the
-        // two shoulders meet or swallow the gauge.
+        // edge when docked. Both radii follow the MacBook notch's proportions
+        // (see `notchConvexRatio`) and are clamped below half the length, so
+        // the two shoulders never meet or swallow the gauge.
         // freeR: convex rounded corners on the free (left) side. contactR: the
         // small concave flare where the body necks out to the flush contact
         // (right) edge — the body is inset from top and bottom by contactR, and
         // the flare connects that inset to the flush corner (Helm's structure).
         let referenceLength = restLength ?? bodyLength ?? rect.height
-        let freeR = min(22, referenceLength / 2, bodyWidth * 0.45)
+        let freeR = min(bodyWidth * Self.notchConvexRatio, referenceLength / 2, bodyWidth * 0.45)
         // Not attached to an edge: a plain rounded pill, every corner rounded.
         // The concave contact-edge flares only exist once docked.
         if eased < 0.5 {
@@ -1834,7 +1833,6 @@ struct CapacityDockRailShape: Shape {
         let contactR = Self.contactRadius(
             bodyWidth: bodyWidth,
             restLength: referenceLength,
-            shoulderDepth: shoulderDepth,
             attachmentProgress: attachmentProgress
         )
 
@@ -1868,17 +1866,23 @@ struct CapacityDockRailShape: Shape {
         return path
     }
 
+    /// MacBook notch proportions: about 32 pt deep, 14 pt radius on its
+    /// free corners and a 6 pt flare where it meets the bezel. The rail's
+    /// depth from the screen edge is its width, so both radii scale with it
+    /// (72 pt wide → 31.5 pt convex, 13.5 pt concave).
+    static let notchConvexRatio: CGFloat = 14.0 / 32.0
+    static let notchConcaveRatio: CGFloat = 6.0 / 32.0
+
     static func contactRadius(
         bodyWidth: CGFloat,
         restLength: CGFloat,
-        shoulderDepth: CGFloat,
         attachmentProgress: CGFloat
     ) -> CGFloat {
         let eased = ease(attachmentProgress)
         if eased < 0.5 { return 0 }
-        let freeR = min(22, restLength / 2, bodyWidth * 0.45)
+        let freeR = min(bodyWidth * notchConvexRatio, restLength / 2, bodyWidth * 0.45)
         return min(
-            shoulderDepth * 0.6,
+            bodyWidth * notchConcaveRatio,
             restLength * 0.22,
             max(0, restLength / 2 - freeR)
         ) * eased

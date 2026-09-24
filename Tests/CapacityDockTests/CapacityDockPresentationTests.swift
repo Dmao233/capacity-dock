@@ -9,7 +9,6 @@ struct CapacityDockPresentationTests {
     func compactRailMetrics() {
         #expect(CapacityDockMetrics.railWidth(scale: 1) == 72)
         #expect(CapacityDockMetrics.horizontalRailWidth(scale: 1) == 78)
-        #expect(CapacityDockMetrics.edgeShoulderDepth(scale: 1) == 72)
         #expect(CapacityDockMetrics.rowHeight(scale: 1) == 62)
         #expect(CapacityDockMetrics.rowSpacing(scale: 1) == 10)
         #expect(CapacityDockMetrics.railAlongPad(scale: 1) == 10)
@@ -19,6 +18,8 @@ struct CapacityDockPresentationTests {
         #expect(CapacityDockMetrics.ringLabelSpacing(scale: 1) == 4)
         #expect(CapacityDockMetrics.providerIconSize(scale: 1) == 20)
         #expect(CapacityDockMetrics.percentageTextSize(scale: 1) == 12)
+        // MacBook notch proportions: 14/32 convex, 6/32 concave at 72 pt deep.
+        #expect(CapacityDockRailShape.contactRadius(bodyWidth: 72, restLength: 200, attachmentProgress: 1) == 13.5)
         #expect(CapacityDockMetrics.settingsCapGap(scale: 1) == 2)
         #expect(CapacityDockMetrics.settingsCapDetachedGap(scale: 1) == 8)
         #expect(CapacityDockMetrics.settingsCapOrbSize(scale: 1) == 44)
@@ -382,7 +383,6 @@ struct CapacityDockPresentationTests {
             bodyWidth: 72,
             bodyLength: restHeight,
             restLength: restHeight,
-            shoulderDepth: 72,
             attachmentProgress: 1,
             edge: .right
         ).path(in: CGRect(x: 0, y: 0, width: 72, height: restHeight))
@@ -390,7 +390,6 @@ struct CapacityDockPresentationTests {
             bodyWidth: 72,
             bodyLength: expandedHeight,
             restLength: restHeight,
-            shoulderDepth: 72,
             attachmentProgress: 1,
             edge: .right
         ).path(in: CGRect(x: 0, y: 0, width: 72, height: expandedHeight))
