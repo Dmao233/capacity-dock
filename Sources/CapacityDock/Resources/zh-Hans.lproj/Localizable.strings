@@ -236,3 +236,4 @@
 "The outer ring is the weekly (or monthly) limit and the inner ring is the 5-hour limit. Both change colour as they fill." = "外环是周（或月）额度，内环是 5 小时额度，两圈都会随用量变色。";
 "The outer ring is the weekly (or monthly) limit and the inner ring is the 5-hour limit. Either ring switches to the 90% colour when nearly spent." = "外环是周（或月）额度，内环是 5 小时额度；任一圈用到 90% 时会切换为警示色。";
 "Claude Code’s sign-in has expired. Send any message with the claude CLI to refresh it." = "Claude Code 的登录凭据已过期。在终端用 claude 命令行发送任意一条消息即可刷新。";
+"%@ of %@ left" = "剩余 %1$@ / %2$@";

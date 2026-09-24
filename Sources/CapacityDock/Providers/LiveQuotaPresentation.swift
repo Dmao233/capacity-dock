@@ -37,6 +37,9 @@ enum LiveQuotaPresentation {
                 resetsAt: scoped.resetsAt
             ))
         }
+        if let credits = usage.cloudCredits {
+            details.append(cloudCreditsWindow(credits))
+        }
         return QuotaSummary(
             providerFilter: .claude,
             connection: .connected,
@@ -45,6 +48,26 @@ enum LiveQuotaPresentation {
             planLabel: usage.tier.displayName,
             footerLines: ["Source: Claude CLI"]
         )
+    }
+
+    /// "$64 of $100 left", with the bar filled by the spent share like
+    /// Claude's own usage popover.
+    static func cloudCreditsWindow(_ credits: SubscriptionUsage.CloudCredits) -> QuotaSummary.Window {
+        QuotaSummary.Window(
+            label: "Cloud session credits",
+            percent: min(max(credits.usedDollars / credits.limitDollars, 0), 1),
+            resetsAt: credits.expiresAt,
+            valueLabel: String(
+                format: NSLocalizedString("%@ of %@ left", comment: ""),
+                dollars(credits.remainingDollars),
+                dollars(credits.limitDollars)
+            ),
+            expires: true
+        )
+    }
+
+    private static func dollars(_ value: Double) -> String {
+        "$" + String(Int(value.rounded(.down)))
     }
 
     static func codex(_ usage: CodexUsage) -> QuotaSummary {

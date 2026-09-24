@@ -30,6 +30,16 @@ struct SubscriptionUsage: Sendable, Equatable {
         let resetsAt: Date?
     }
 
+    /// Prepaid dollar credits for Claude Code cloud sessions (the usage
+    /// endpoint's `iguana_necktie` block): a fixed grant that expires rather
+    /// than resets.
+    struct CloudCredits: Sendable, Equatable {
+        let limitDollars: Double
+        let usedDollars: Double
+        let remainingDollars: Double
+        let expiresAt: Date?
+    }
+
     let tier: Tier
     let rawTier: String?
     let fiveHourPercent: Double?
@@ -42,6 +52,7 @@ struct SubscriptionUsage: Sendable, Equatable {
     let sevenDaySonnetResetsAt: Date?
     let scopedWeekly: [ScopedWindow]
     let fetchedAt: Date
+    var cloudCredits: CloudCredits? = nil
 
     static func tier(from raw: String?) -> Tier {
         guard let raw = raw?.lowercased() else { return .unknown }

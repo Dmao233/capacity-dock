@@ -1254,6 +1254,7 @@ enum CapacityDockQuotaPresentation {
             .replacingOccurrences(of: "Gemini Models", with: "Gemini", options: .caseInsensitive)
             .replacingOccurrences(of: "Five-hour", with: "5h", options: .caseInsensitive)
             .replacingOccurrences(of: "5-hour", with: "5h", options: .caseInsensitive)
+            .replacingOccurrences(of: "Cloud session credits", with: "Cloud credits", options: .caseInsensitive)
         if compact.range(of: "limit", options: .caseInsensitive) != nil {
             return compact
         }
@@ -1653,12 +1654,21 @@ private struct CapacityDockQuotaRow: View {
                     .foregroundStyle(Color.capacityDockText.opacity(0.92))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                Text(window.percentLabel)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.capacityDockText)
-                    .contentTransition(.numericText())
-                    .accessibilityLabel("\(window.percentLabel) Used")
+                if let value = window.valueLabel {
+                    Text(value)
+                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.capacityDockText.opacity(0.86))
+                        .lineLimit(1)
+                        .contentTransition(.numericText())
+                } else {
+                    Text(window.percentLabel)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.capacityDockText)
+                        .contentTransition(.numericText())
+                        .accessibilityLabel("\(window.percentLabel) Used")
+                }
             }
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {

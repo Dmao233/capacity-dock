@@ -45,6 +45,10 @@ struct QuotaSummary: Equatable {
         let label: String
         let percent: Double           // 0..1
         let resetsAt: Date?
+        /// Replaces the percentage for amount-based windows ("$64 of $100 left").
+        var valueLabel: String? = nil
+        /// The window ends at `resetsAt` instead of starting over (prepaid credits).
+        var expires: Bool = false
     }
 
     /// Color band thresholds for the inline chip bar and aggregate menubar
@@ -95,7 +99,10 @@ struct QuotaSummary: Equatable {
         }
         if let weekly = firstMatching("week") { return weekly }
         if let monthly = firstMatching("month") { return monthly }
-        return candidates.max { lhs, rhs in lhs.percent < rhs.percent }
+        // Prepaid credits are a balance, not a plan limit; only headline them
+        // when nothing else is known.
+        let limits = candidates.filter { !$0.expires }
+        return (limits.isEmpty ? candidates : limits).max { lhs, rhs in lhs.percent < rhs.percent }
     }
 
     /// The rolling short-term window (Claude / Codex / Z.ai "5-hour") drawn as
@@ -178,7 +185,25 @@ extension QuotaSummary.Window {
     }
 
     func resetsAtLabel(locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        Self.formatResetsAt(resetsAt, locale: locale, timeZone: timeZone)
+        if expires {
+            return Self.formatExpiresAt(resetsAt, locale: locale, timeZone: timeZone)
+        }
+        return Self.formatResetsAt(resetsAt, locale: locale, timeZone: timeZone)
+    }
+
+    /// Credits expire weeks out, so the date matters more than the weekday:
+    /// "Expires Nov 5, 3:59 PM" / "Expires 11月5日 下午3:59".
+    static func formatExpiresAt(
+        _ expiresAt: Date?,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        guard let expiresAt else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate("MMMdjmm")
+        return "Expires \(formatter.string(from: expiresAt))"
     }
 
     static func formatResetsAt(
