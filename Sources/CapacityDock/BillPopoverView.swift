@@ -392,7 +392,25 @@ struct BillPopoverView: View {
                 Spacer()
                 Text(days.last?.label ?? "")
             }.font(.system(size: 9)).monospacedDigit().foregroundStyle(.secondary)
+            // Three squares cannot fill the chart height the other tabs use,
+            // so the space carries a summary instead of sitting empty.
+            let stats = BillPopoverPresentation.activityStats(days)
+            HStack(spacing: 0) {
+                activityStat("Active days", value: "\(stats.activeDays)/\(stats.totalDays)")
+                activityStat("Longest streak", value: String(format: NSLocalizedString("%d days", comment: ""), stats.longestStreak))
+                activityStat("Peak day", value: stats.peak > 0 ? BillPopoverPresentation.compact(stats.peak) : "—")
+            }
         }
+    }
+
+    private func activityStat(_ title: LocalizedStringKey, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(title).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(value).font(.system(size: 12, weight: .semibold, design: .rounded)).monospacedDigit()
+        }
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private func activityCell(_ day: BillPopoverPresentation.Day, peak: Int) -> some View {
@@ -622,6 +640,33 @@ enum BillPopoverPresentation {
         var id: Date { date }
     }
     struct Part { let title: LocalizedStringKey; let value: Int }
+    struct ActivityStats: Equatable {
+        var activeDays: Int
+        var totalDays: Int
+        var longestStreak: Int
+        var peak: Int
+    }
+
+    /// Active = any tokens that day; a day with no records or zero tokens
+    /// breaks the streak.
+    static func activityStats(_ days: [Day]) -> ActivityStats {
+        var streak = 0
+        var longest = 0
+        for day in days {
+            if (day.tokens ?? 0) > 0 {
+                streak += 1
+                longest = max(longest, streak)
+            } else {
+                streak = 0
+            }
+        }
+        return ActivityStats(
+            activeDays: days.filter { ($0.tokens ?? 0) > 0 }.count,
+            totalDays: days.count,
+            longestStreak: longest,
+            peak: days.compactMap(\.tokens).max() ?? 0
+        )
+    }
 
     static func compact(_ value: Int) -> String {
         value.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))

@@ -16,6 +16,8 @@ struct APIBalanceTests {
         #expect(result.amounts[0].granted == 10)
         #expect(result.amounts[0].toppedUp == Decimal(string: "100.01"))
         #expect(result.amounts[1].text == "2.50 USD")
+        #expect(result.amounts[1].symbolText == "$2.50")
+        #expect(result.amounts[0].symbolText == "¥110.01")
     }
 
     @Test(arguments: [
@@ -82,7 +84,9 @@ struct APIBalanceTests {
         let snapshot = APIBalanceSnapshot(account: account, amounts: [.init(currency: "CNY", value: 12)], fetchedAt: Date().addingTimeInterval(-600))
         defaults.set(try JSONEncoder().encode([account]), forKey: "CapacityDockAPIBalanceAccounts")
         defaults.set(try JSONEncoder().encode([account.id: snapshot]), forKey: "CapacityDockAPIBalanceCache")
-        #expect(APIBalanceStore(defaults: defaults).menuText == "12.00 CNY ↻")
+        #expect(APIBalanceStore(defaults: defaults).menuText == "¥12.00 ↻")
+        #expect(APIBalanceStore(defaults: defaults).menuAmounts == "¥12.00")
+        #expect(APIBalanceStore(defaults: defaults).menuIsStale)
         var changed = account
         changed.name = "New account settings"
         defaults.set(try JSONEncoder().encode([changed]), forKey: "CapacityDockAPIBalanceAccounts")

@@ -44,6 +44,15 @@ struct APIBalanceAmount: Codable, Equatable, Sendable {
         formatter.maximumFractionDigits = 2
         return "\(formatter.string(from: NSDecimalNumber(decimal: value)) ?? "—") \(currency)"
     }
+    /// "¥49.87" / "$12.00"; codes without a common symbol keep the code.
+    var symbolText: String {
+        let number = text.replacingOccurrences(of: " \(currency)", with: "")
+        switch currency {
+        case "CNY": return "¥" + number
+        case "USD": return "$" + number
+        default: return currency + " " + number
+        }
+    }
 }
 
 struct APIBalanceSnapshot: Codable, Equatable, Sendable {
@@ -229,13 +238,22 @@ final class APIBalanceStore {
     }
 
     var menuText: String? {
+        guard let amounts = menuAmounts else { return nil }
+        return amounts + (menuIsStale ? " ↻" : "")
+    }
+
+    /// Menu-bar form: currency symbols, no stale marker (the status item
+    /// dims the value instead).
+    var menuAmounts: String? {
         guard !accounts.isEmpty else { return nil }
         let totals = APIBalanceParser.total(accounts: accounts, snapshots: snapshots)
-        let text = totals?.map(\.text).joined(separator: " · ") ?? "—"
-        let stale = accounts.contains { account in
+        return totals?.map(\.symbolText).joined(separator: " · ") ?? "—"
+    }
+
+    var menuIsStale: Bool {
+        accounts.contains { account in
             errors[account.id] != nil || snapshots[account.id].map { Date().timeIntervalSince($0.fetchedAt) > 300 } == true
         }
-        return text + (stale ? " ↻" : "")
     }
 
     func start() {
