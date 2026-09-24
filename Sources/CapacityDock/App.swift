@@ -7,9 +7,10 @@ struct CapacityDockApp: App {
 
     var body: some Scene {
         // Accessory apps still need a Scene. Real settings live in an owned
-        // key window; SwiftUI's Settings scene does not present from a
-        // nonactivating LSUIElement.
-        Settings {
+        // key window. An empty `Settings` scene is not safe: activating the
+        // app (opening the menu-bar panel) could bring up its blank window.
+        // A never-inserted menu bar extra owns no window at all.
+        MenuBarExtra("Capacity Dock", isInserted: .constant(false)) {
             EmptyView()
         }
         .commands {
@@ -112,6 +113,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // A named slot keeps this item's saved visibility apart from the
+        // auto-numbered "Item-0", which reinstalls and the placeholder scene
+        // have left marked hidden. The menu-bar item is the app's only entry
+        // point, so it is always shown at launch.
+        item.autosaveName = "CapacityDockUsage"
+        item.isVisible = true
         item.button?.target = self
         item.button?.action = #selector(statusItemActivated(_:))
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])

@@ -1419,21 +1419,34 @@ struct CapacityDockDetailView: View {
                 }
                 let liveTasks = model.activeTasks
                 if !liveTasks.isEmpty {
-                    VStack(alignment: .leading, spacing: 8 * model.detailScale) {
-                        HStack(spacing: 7 * model.detailScale) {
-                            CapacityDockLiveDot(size: 8 * model.detailScale)
+                    let scale = model.detailScale
+                    VStack(alignment: .leading, spacing: 6 * scale) {
+                        HStack(spacing: 6 * scale) {
+                            CapacityDockLiveDot(size: 9 * scale)
                             Text(String(format: NSLocalizedString("%d running tasks", comment: ""), liveTasks.count))
-                                .font(.system(size: 10, weight: .medium))
+                                .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Color.capacityDockText.opacity(0.62))
                         }
-                        ForEach(liveTasks) { task in
-                            CapacityDockActiveTaskRow(
-                                task: task,
-                                scale: model.detailScale
-                            )
+                        .padding(.horizontal, 4 * scale)
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(liveTasks.enumerated()), id: \.element.id) { index, task in
+                                if index > 0 {
+                                    Rectangle()
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(height: 0.5)
+                                        .padding(.leading, 12 * scale)
+                                }
+                                CapacityDockActiveTaskRow(task: task, scale: scale)
+                                    .padding(.horizontal, 12 * scale)
+                                    .padding(.vertical, 8 * scale)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
+                        .background(
+                            RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+                                .fill(Color.white.opacity(0.07))
+                        )
                     }
-                    .padding(.top, 2 * model.detailScale)
                 }
             } else {
                 Text(ProviderConnectionGuidance.dockInstruction(for: provider))
@@ -1504,26 +1517,25 @@ private struct CapacityDockActiveTaskRow: View {
     let scale: CGFloat
 
     var body: some View {
-        HStack(alignment: .top, spacing: 7 * scale) {
-            Circle().fill(Color.green.opacity(0.75))
-                .frame(width: 4 * scale, height: 4 * scale)
-                .padding(.horizontal, 2 * scale).padding(.top, 5 * scale)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1 * scale) {
-                if let workspace = task.workspace {
+        VStack(alignment: .leading, spacing: 2 * scale) {
+            Text(task.title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.capacityDockText.opacity(0.92))
+                .fixedSize(horizontal: false, vertical: true)
+            if let workspace = task.workspace {
+                Label {
                     Text(workspace)
-                        .font(.system(size: 9))
-                        .foregroundStyle(Color.capacityDockText.opacity(0.5))
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "folder")
                 }
-                Text(task.title)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.capacityDockText.opacity(0.88))
-                    .fixedSize(horizontal: false, vertical: true)
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.capacityDockText.opacity(0.5))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .help(helpText)
         }
+        .help(helpText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }

@@ -974,3 +974,34 @@ struct CapacityDockActiveTaskTests {
 }
 
 private let sqliteTransientForActiveTaskTests = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+@Suite("Claude live task titles")
+struct ClaudeLiveTaskTitleTests {
+    private func transcript(cwd: String) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("\(UUID().uuidString).jsonl")
+        let line = #"{"type":"user","cwd":"\#(cwd)","message":{"content":"hi"}}"# + "\n"
+        try Data(line.utf8).write(to: file)
+        return file
+    }
+
+    @Test("Worktree session shows worktree name with the repository as workspace")
+    func worktreeTitle() throws {
+        let file = try transcript(cwd: "/Users/me/Documents/Grok/capacity-dock/.claude/worktrees/claude-quota-display-optimization-22bd9f")
+        let task = ClaudeLiveSessionStore.task(
+            for: file,
+            projectFolder: "-Users-me-Documents-Grok-capacity-dock--claude-worktrees-claude-quota-display-optimization-22bd9f"
+        )
+        #expect(task.title == "claude-quota-display-optimization-22bd9f")
+        #expect(task.workspace == "capacity-dock")
+    }
+
+    @Test("Hyphenated and non-ASCII folders come from cwd, not the lossy folder name")
+    func plainTitle() throws {
+        let hyphen = try transcript(cwd: "/Users/me/code/capacity-dock")
+        #expect(ClaudeLiveSessionStore.task(for: hyphen, projectFolder: "-Users-me-code-capacity-dock").title == "capacity-dock")
+        let chinese = try transcript(cwd: "/Users/me/Desktop/项目/独立开发")
+        #expect(ClaudeLiveSessionStore.task(for: chinese, projectFolder: "-Users-me-Desktop------").title == "独立开发")
+    }
+}
