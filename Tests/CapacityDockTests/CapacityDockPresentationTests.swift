@@ -643,6 +643,7 @@ struct CapacityDockPresentationTests {
         #expect(CapacityDockQuotaPresentation.displayLabel("Claude and GPT models · Five-hour") == "5h limit")
         #expect(CapacityDockQuotaPresentation.displayLabel("Claude and GPT models · Weekly") == "Weekly limit")
         #expect(CapacityDockQuotaPresentation.displayLabel("Weekly") == "Weekly limit")
+        #expect(CapacityDockQuotaPresentation.displayLabel("Weekly · Opus") == "Weekly · Opus")
         #expect(CapacityDockQuotaPresentation.compactPlanLabel("SuperGrok Heavy") == "Heavy")
         #expect(CapacityDockQuotaPresentation.compactPlanLabel("SuperGrok") == "SuperGrok")
         #expect(CapacityDockQuotaPresentation.compactPlanLabel("Pro") == "Pro")

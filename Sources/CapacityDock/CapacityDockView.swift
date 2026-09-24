@@ -22,6 +22,11 @@ enum CapacityDockMetrics {
     private static let baseRingStrokeWidth: CGFloat = 3
     private static let baseRingLabelSpacing: CGFloat = 4
     private static let baseProviderIconSize: CGFloat = 20
+    /// Inner 5h ring: thinner than the weekly ring and inset past its track,
+    /// with the icon shrunk so it sits clear of both.
+    private static let baseInnerRingInset: CGFloat = 7
+    private static let baseInnerRingStrokeWidth: CGFloat = 2.5
+    private static let baseNestedProviderIconSize: CGFloat = 15
     private static let basePercentageTextSize: CGFloat = 12
     private static let baseDetailWidth: CGFloat = 280
     private static let baseSettingsCapGap: CGFloat = 2
@@ -50,6 +55,9 @@ enum CapacityDockMetrics {
     static func ringStrokeWidth(scale: CGFloat) -> CGFloat { points(baseRingStrokeWidth, scale) }
     static func ringLabelSpacing(scale: CGFloat) -> CGFloat { points(baseRingLabelSpacing, scale) }
     static func providerIconSize(scale: CGFloat) -> CGFloat { points(baseProviderIconSize, scale) }
+    static func innerRingInset(scale: CGFloat) -> CGFloat { points(baseInnerRingInset, scale) }
+    static func innerRingStrokeWidth(scale: CGFloat) -> CGFloat { max(1, baseInnerRingStrokeWidth * scale) }
+    static func nestedProviderIconSize(scale: CGFloat) -> CGFloat { points(baseNestedProviderIconSize, scale) }
     static func percentageTextSize(scale: CGFloat) -> CGFloat { points(basePercentageTextSize, scale) }
     static func detailWidth(scale: CGFloat, hasTasks: Bool = false) -> CGFloat {
         points(baseDetailWidth + (hasTasks ? 60 : 0), scale)
@@ -733,6 +741,7 @@ struct CapacityDockView: View {
                 quota: quota(provider),
                 scale: model.scale,
                 gaugeShape: model.preferences.gaugeShape,
+                ringStyle: model.preferences.ringStyle,
                 onClick: { onProviderClick(provider) }
             )
         }
@@ -1030,34 +1039,53 @@ private struct CapacityDockProviderRow: View {
     let quota: QuotaSummary?
     let scale: CGFloat
     let gaugeShape: CapacityDockGaugeShape
+    let ringStyle: CapacityDockRingStyle
     let onClick: () -> Void
 
     private var headline: QuotaSummary.Window? { quota?.headlineWindow }
     private var percent: Double? { headline?.percent }
+    /// Short rolling window (5h) as a concentric inner ring, like Activity rings.
+    private var session: QuotaSummary.Window? {
+        guard ringStyle.showsSessionRing, balance == nil, let quota,
+              CapacityDockQuotaPresentation.ringPercentLabel(quota: quota) != "-" else { return nil }
+        return quota.sessionWindow
+    }
     private var balance: APIBalanceDockPresentation? {
         provider.apiBalanceKind.map { APIBalanceStore.shared.dockPresentation(for: $0) }
     }
     private var valueLabel: String { balance?.label ?? CapacityDockQuotaPresentation.ringPercentLabel(quota: quota) }
     private var balanceColor: Color {
         guard let balance, balance.hasBalance else { return .gray }
-        if balance.isStale { return .orange }
-        return balance.isUnavailable ? .red : .green
+        if balance.isStale { return ringStyle.color(.critical) }
+        return balance.isUnavailable ? ringStyle.color(.danger) : ringStyle.color(.normal)
     }
 
     var body: some View {
         Button(action: onClick) {
             VStack(spacing: CapacityDockMetrics.ringLabelSpacing(scale: scale)) {
                 ZStack {
-                    CapacityDockUsageRing(
-                        progress: balance == nil ? percent : nil,
-                        color: headlineRingColor,
-                        scale: scale,
-                        gaugeShape: gaugeShape
-                    )
                     if balance != nil {
                         // A status outline, not a percentage of an unknown balance limit.
                         CapacityDockGaugePath(kind: gaugeShape)
                             .stroke(balanceColor, lineWidth: CapacityDockMetrics.ringStrokeWidth(scale: scale))
+                    } else {
+                        CapacityDockUsageRing(
+                            progress: percent,
+                            color: headlineRingColor,
+                            scale: scale,
+                            gaugeShape: gaugeShape
+                        )
+                    }
+                    if let session {
+                        CapacityDockUsageRing(
+                            progress: session.percent,
+                            color: ringStyle.color(for: session.percent, ring: .session),
+                            scale: scale,
+                            gaugeShape: gaugeShape,
+                            isInner: true
+                        )
+                        .padding(CapacityDockMetrics.innerRingInset(scale: scale))
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
                     }
 
                     if let image = ProviderIconCache.image(named: provider.iconName) {
@@ -1065,20 +1093,17 @@ private struct CapacityDockProviderRow: View {
                             .resizable()
                             .scaledToFit()
                             .foregroundStyle(.white)
-                            .frame(
-                                width: CapacityDockMetrics.providerIconSize(scale: scale),
-                                height: CapacityDockMetrics.providerIconSize(scale: scale)
-                            )
+                            .frame(width: iconSize, height: iconSize)
                     } else {
                         Image(systemName: "circle.dotted")
-                            .font(.system(size: 21 * scale, weight: .medium))
+                            .font(.system(size: iconSize, weight: .medium))
                             .foregroundStyle(.white)
                     }
 
                     if case .terminalFailure = quota?.connection {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.system(size: 12 * scale, weight: .bold))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(ringStyle.color(.danger))
                             .background(Circle().fill(.black))
                             .offset(x: 19 * scale, y: -19 * scale)
                     }
@@ -1088,11 +1113,13 @@ private struct CapacityDockProviderRow: View {
                     height: CapacityDockMetrics.ringSize(scale: scale)
                 )
                 .compositingGroup()
+                .animation(CapacityDockValueMotion.spring, value: session == nil)
 
                 Text(valueLabel)
                     .font(.system(
                         size: CapacityDockMetrics.percentageTextSize(scale: scale),
-                        weight: .medium
+                        weight: .semibold,
+                        design: .rounded
                     ))
                     .monospacedDigit()
                     .foregroundStyle(balance == nil ? headlinePercentColor : Color.capacityDockText.opacity(balance?.isStale == true ? 0.6 : 1))
@@ -1104,62 +1131,76 @@ private struct CapacityDockProviderRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(provider.displayName) usage")
-        .accessibilityValue(balance?.totals?.map(\.text).joined(separator: " · ") ?? valueLabel)
+        .accessibilityValue(balance?.totals?.map(\.text).joined(separator: " · ") ?? accessibilityValue)
         .accessibilityHint("Click to show usage details")
     }
 
-    private var headlinePercentColor: Color {
-        guard let percent else { return Color.capacityDockText.opacity(0.72) }
-        switch QuotaSummary.severity(for: percent) {
-        case .normal: return Color.capacityDockText
-        case .warning: return .yellow
-        case .critical: return .orange
-        case .danger: return .red
-        }
+    private var iconSize: CGFloat {
+        session == nil
+            ? CapacityDockMetrics.providerIconSize(scale: scale)
+            : CapacityDockMetrics.nestedProviderIconSize(scale: scale)
     }
 
-    // The ring reflects the weekly (else monthly) limit's status, not a brand
-    // colour: green while there is headroom, stepping to red as it is exhausted.
+    private var accessibilityValue: String {
+        guard let session else { return valueLabel }
+        let period = headline.map { CapacityDockQuotaPresentation.displayLabel($0.label) } ?? "Usage"
+        return "\(period) \(valueLabel), 5h limit \(session.percentLabel)"
+    }
+
+    /// The label stays near-white while there is headroom and only picks up
+    /// the status colour once the limit needs attention.
+    private var headlinePercentColor: Color {
+        guard let percent else { return Color.capacityDockText.opacity(0.72) }
+        if QuotaSummary.severity(for: percent) == .normal { return Color.capacityDockText }
+        return ringStyle.statusColor(for: percent)
+    }
+
+    // The ring reflects the weekly (else monthly) limit, coloured by usage or
+    // by the user's per-ring colour.
     private var headlineRingColor: Color {
         guard let percent else { return Color.capacityDockText.opacity(0.35) }
-        switch QuotaSummary.severity(for: percent) {
-        case .normal: return .green
-        case .warning: return .yellow
-        case .critical: return .orange
-        case .danger: return .red
-        }
+        return ringStyle.color(for: percent, ring: .weekly)
     }
 }
 
-private struct CapacityDockUsageRing: View {
+/// Spring used when quota values change; nil under Reduce Motion so values
+/// jump straight to the new state.
+enum CapacityDockValueMotion {
+    static var spring: Animation? {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            ? nil
+            : .spring(response: 0.55, dampingFraction: 0.82)
+    }
+}
+
+/// One Activity-style ring: a track tinted with the ring's own colour and a
+/// solid, round-capped progress arc.
+struct CapacityDockUsageRing: View {
     let progress: Double?
     let color: Color
     let scale: CGFloat
     let gaugeShape: CapacityDockGaugeShape
+    var isInner = false
 
     private var strokeWidth: CGFloat {
-        CapacityDockMetrics.ringStrokeWidth(scale: scale)
+        isInner
+            ? CapacityDockMetrics.innerRingStrokeWidth(scale: scale)
+            : CapacityDockMetrics.ringStrokeWidth(scale: scale)
+    }
+
+    private var amount: Double {
+        min(max(progress ?? 0, 0), 1)
     }
 
     var body: some View {
         ZStack {
-            // A recessed track makes the progress read as light filling a
-            // physical channel instead of a flat vector stroke.
-            CapacityDockGaugePath(kind: gaugeShape)
-                .stroke(Color.black.opacity(0.74), lineWidth: strokeWidth + 2 * scale)
             CapacityDockGaugePath(kind: gaugeShape)
                 .stroke(
-                    LinearGradient(
-                        colors: [.white.opacity(0.16), .white.opacity(0.07), .white.opacity(0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: strokeWidth + 0.6 * scale
+                    progress == nil ? Color.white.opacity(0.10) : color.opacity(0.22),
+                    lineWidth: strokeWidth
                 )
 
-            if let progress {
-                let amount = min(max(progress, 0), 1)
-                // Plain solid progress arc, no neon glow or gradient sheen.
+            if progress != nil {
                 CapacityDockGaugePath(kind: gaugeShape)
                     .trim(from: 0, to: amount)
                     .stroke(
@@ -1169,6 +1210,8 @@ private struct CapacityDockUsageRing: View {
                     .rotationEffect(.degrees(-90))
             }
         }
+        .animation(CapacityDockValueMotion.spring, value: amount)
+        .animation(CapacityDockValueMotion.spring, value: progress == nil)
         .compositingGroup()
     }
 }
@@ -1198,6 +1241,13 @@ enum CapacityDockQuotaPresentation {
             .replacingOccurrences(of: "Five-hour", with: "5h", options: .caseInsensitive)
             .replacingOccurrences(of: "5-hour", with: "5h", options: .caseInsensitive)
         if compact.range(of: "limit", options: .caseInsensitive) != nil {
+            return compact
+        }
+        // "Weekly · Opus" names a per-model slice of the weekly window; keep
+        // the scope so it doesn't read as a second copy of the weekly limit.
+        let segments = compact.components(separatedBy: " · ")
+        if segments.count > 1,
+           ["week", "5h", "month"].contains(where: { segments[0].range(of: $0, options: .caseInsensitive) != nil }) {
             return compact
         }
         if compact.range(of: "5h", options: .caseInsensitive) != nil {
@@ -1317,53 +1367,55 @@ struct CapacityDockDetailView: View {
     }
 
     private func quotaDetail(for provider: CapacityDockProvider, quota: QuotaSummary?) -> some View {
-        VStack(alignment: .leading, spacing: 11 * model.detailScale) {
+        VStack(alignment: .leading, spacing: 12 * model.detailScale) {
             HStack(spacing: 8 * model.detailScale) {
                 if let image = ProviderIconCache.image(named: provider.iconName) {
                     Image(nsImage: image)
                         .resizable()
                         .scaledToFit()
                         .foregroundStyle(Color.capacityDockText)
-                        .frame(width: 24 * model.detailScale, height: 24 * model.detailScale)
+                        .frame(width: 20 * model.detailScale, height: 20 * model.detailScale)
                 }
                 Text("\(provider.displayName) Usage")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.capacityDockText)
                 Spacer(minLength: 8)
                 if let plan = quota?.planLabel, !plan.isEmpty {
                     Text(CapacityDockQuotaPresentation.compactPlanLabel(plan))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.capacityDockText.opacity(0.62))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.capacityDockText.opacity(0.72))
                         .lineLimit(1)
+                        .padding(.horizontal, 7 * model.detailScale)
+                        .padding(.vertical, 2.5 * model.detailScale)
+                        .background(Capsule().fill(Color.white.opacity(0.10)))
                 }
             }
 
             if let quota {
                 connectionLabel(quota.connection, provider: provider)
-                if quota.details.isEmpty, let primary = quota.primary {
-                    CapacityDockQuotaRow(
-                        window: primary,
+                let windows = quota.details.isEmpty
+                    ? [quota.primary].compactMap { $0 }
+                    : Array(quota.details.prefix(5))
+                if !windows.isEmpty {
+                    CapacityDockQuotaGroup(
+                        windows: windows,
+                        ringStyle: model.preferences.ringStyle,
                         scale: model.detailScale
                     )
-                } else {
-                    ForEach(Array(quota.details.prefix(5).enumerated()), id: \.offset) { _, window in
-                        CapacityDockQuotaRow(
-                            window: window,
-                            scale: model.detailScale
-                        )
-                    }
                 }
                 let footerLines = CapacityDockQuotaPresentation.visibleFooterLines(
                     quota.footerLines,
                     connection: quota.connection
                 )
                 if !footerLines.isEmpty {
-                    Divider().overlay(Color.capacityDockText.opacity(0.12))
-                    ForEach(Array(footerLines.prefix(2).enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.capacityDockText.opacity(0.58))
+                    VStack(alignment: .leading, spacing: 3 * model.detailScale) {
+                        ForEach(Array(footerLines.prefix(2).enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Color.capacityDockText.opacity(0.5))
+                        }
                     }
+                    .padding(.horizontal, 4 * model.detailScale)
                 }
                 let liveTasks = model.activeTasks
                 if !liveTasks.isEmpty {
@@ -1529,48 +1581,84 @@ private struct CapacityDockLiveDot: View {
     }
 }
 
-private struct CapacityDockQuotaRow: View {
-    let window: QuotaSummary.Window
+/// The window list as one inset-grouped block on the black card, the way
+/// grouped lists sit on a dark system background.
+private struct CapacityDockQuotaGroup: View {
+    let windows: [QuotaSummary.Window]
+    let ringStyle: CapacityDockRingStyle
     let scale: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5 * scale) {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(windows.enumerated()), id: \.offset) { index, window in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(height: 0.5)
+                        .padding(.leading, 12 * scale)
+                }
+                CapacityDockQuotaRow(window: window, ringStyle: ringStyle, scale: scale)
+                    .padding(.horizontal, 12 * scale)
+                    .padding(.vertical, 9 * scale)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+                .fill(Color.white.opacity(0.07))
+        )
+    }
+}
+
+private struct CapacityDockQuotaRow: View {
+    let window: QuotaSummary.Window
+    let ringStyle: CapacityDockRingStyle
+    let scale: CGFloat
+
+    private var amount: Double { min(max(window.percent, 0), 1) }
+    private var isSession: Bool { window.isSessionWindow }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6 * scale) {
             HStack(alignment: .firstTextBaseline, spacing: 8 * scale) {
                 Text(CapacityDockQuotaPresentation.displayLabel(window.label))
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.92))
+                    .foregroundStyle(Color.capacityDockText.opacity(0.92))
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                if !window.resetsAtLabel.isEmpty {
-                    Text(window.resetsAtLabel)
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.white.opacity(0.45))
-                        .lineLimit(1)
-                }
+                Text(window.percentLabel)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.capacityDockText)
+                    .contentTransition(.numericText())
+                    .accessibilityLabel("\(window.percentLabel) Used")
             }
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.white.opacity(0.14))
+                    Capsule().fill(progressColor.opacity(0.22))
                     Capsule()
                         .fill(progressColor)
-                        .frame(width: max(2, geometry.size.width * min(max(window.percent, 0), 1)))
+                        .frame(width: max(4 * scale, geometry.size.width * amount))
                 }
             }
-            .frame(height: 4 * scale)
-            Text("\(window.percentLabel) Used")
-                .font(.system(size: 11, weight: .medium))
+            .frame(height: 5 * scale)
+            .animation(CapacityDockValueMotion.spring, value: amount)
+            if !window.resetsAtLabel.isEmpty {
+                HStack(spacing: 4 * scale) {
+                    Text(window.resetsAtLabel)
+                    if !window.resetsInLabel.isEmpty {
+                        Text("· in \(window.resetsInLabel)")
+                    }
+                }
+                .font(.system(size: 10.5))
                 .monospacedDigit()
-                .foregroundStyle(Color.white.opacity(0.88))
+                .foregroundStyle(Color.capacityDockText.opacity(0.5))
+                .lineLimit(1)
+            }
         }
     }
 
     private var progressColor: Color {
-        switch QuotaSummary.severity(for: window.percent) {
-        case .normal: return .green
-        case .warning: return .yellow
-        case .critical: return .orange
-        case .danger: return .red
-        }
+        ringStyle.color(for: window.percent, ring: isSession ? .session : .weekly)
     }
 }
 

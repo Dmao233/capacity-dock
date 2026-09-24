@@ -408,11 +408,6 @@ private struct GeneralSettingsTab: View {
                         Text(theme.displayName).tag(theme)
                     }
                 }
-                Picker("Gauge shape", selection: gaugeBinding) {
-                    ForEach(CapacityDockGaugeShape.allCases, id: \.self) { shape in
-                        Text(shape.displayName).tag(shape)
-                    }
-                }
             } header: {
                 Text("Display")
             } footer: {
@@ -424,6 +419,8 @@ private struct GeneralSettingsTab: View {
                     Text(message)
                 }
             }
+
+            RingSettingsSection(snapshot: snapshot, gaugeBinding: gaugeBinding)
 
             Section {
                 Button("Refresh live quotas") {
@@ -914,3 +911,117 @@ private struct ProviderConnectionSections: View {
         }
     }
 }
+
+private struct RingSettingsSection: View {
+    let snapshot: CapacityDockPreferences.Snapshot
+    let gaugeBinding: Binding<CapacityDockGaugeShape>
+
+    private var style: CapacityDockRingStyle { snapshot.ringStyle }
+
+    var body: some View {
+        Section {
+            RingPreview(style: style, gaugeShape: snapshot.gaugeShape)
+                .frame(maxWidth: .infinity)
+                .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
+
+            Picker("Gauge shape", selection: gaugeBinding) {
+                ForEach(CapacityDockGaugeShape.allCases, id: \.self) { shape in
+                    Text(shape.displayName).tag(shape)
+                }
+            }
+            Toggle(isOn: Binding(
+                get: { style.showsSessionRing },
+                set: { CapacityDockPreferences.setShowsSessionRing($0) }
+            )) {
+                Text("Show 5h inner ring")
+            }
+            Picker("Ring colours", selection: Binding(
+                get: { style.mode },
+                set: { CapacityDockPreferences.setRingColorMode($0) }
+            )) {
+                ForEach(CapacityDockRingColorMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            ForEach(visibleSlots, id: \.self) { slot in
+                ColorPicker(selection: colorBinding(slot), supportsOpacity: false) {
+                    Text(slot.displayName)
+                }
+            }
+            Button("Restore Default Colours") {
+                CapacityDockPreferences.resetRingColors()
+            }
+            .disabled(style.custom.isEmpty)
+        } header: {
+            Text("Rings")
+        } footer: {
+            Text(style.mode == .status
+                 ? "The outer ring is the weekly (or monthly) limit and the inner ring is the 5-hour limit. Both change colour as they fill."
+                 : "The outer ring is the weekly (or monthly) limit and the inner ring is the 5-hour limit. Either ring switches to the 90% colour when nearly spent.")
+        }
+    }
+
+    private var visibleSlots: [CapacityDockRingStyle.Slot] {
+        style.mode == .status
+            ? CapacityDockRingStyle.Slot.statusSlots
+            : CapacityDockRingStyle.Slot.fixedSlots + [.danger]
+    }
+
+    private func colorBinding(_ slot: CapacityDockRingStyle.Slot) -> Binding<Color> {
+        Binding(
+            get: { style.color(slot) },
+            set: { CapacityDockPreferences.setRingColor(CapacityDockRGB($0), for: slot) }
+        )
+    }
+}
+
+/// Sample rings on the dock's own black surface so colour changes are judged
+/// against the background they will actually sit on.
+private struct RingPreview: View {
+    let style: CapacityDockRingStyle
+    let gaugeShape: CapacityDockGaugeShape
+
+    private static let samples: [(weekly: Double, session: Double)] = [
+        (0.27, 0.18), (0.58, 0.64), (0.81, 0.93),
+    ]
+
+    var body: some View {
+        HStack(spacing: 28) {
+            ForEach(Array(Self.samples.enumerated()), id: \.offset) { _, sample in
+                VStack(spacing: 5) {
+                    ZStack {
+                        CapacityDockUsageRing(
+                            progress: sample.weekly,
+                            color: style.color(for: sample.weekly, ring: .weekly),
+                            scale: 1,
+                            gaugeShape: gaugeShape
+                        )
+                        if style.showsSessionRing {
+                            CapacityDockUsageRing(
+                                progress: sample.session,
+                                color: style.color(for: sample.session, ring: .session),
+                                scale: 1,
+                                gaugeShape: gaugeShape,
+                                isInner: true
+                            )
+                            .padding(CapacityDockMetrics.innerRingInset(scale: 1))
+                        }
+                    }
+                    .frame(width: CapacityDockMetrics.ringSize(scale: 1), height: CapacityDockMetrics.ringSize(scale: 1))
+                    Text("\(Int((sample.weekly * 100).rounded()))%")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.capacityDockText)
+                }
+            }
+        }
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.black))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Ring preview"))
+    }
+}
+

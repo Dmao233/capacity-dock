@@ -176,6 +176,9 @@ enum CapacityDockPreferences {
     static let themeKey = "CapacityDockTheme"
     static let gaugeShapeKey = "CapacityDockGaugeShape"
     static let keepExpandedKey = "CapacityDockKeepExpanded"
+    static let ringColorModeKey = "CapacityDockRingColorMode"
+    static let showsSessionRingKey = "CapacityDockShowsSessionRing"
+    static let ringColorKeyPrefix = "CapacityDockRingColor."
     static let currencyKey = "CapacityDockCurrency"
     static let manualSelectionKey = "CapacityDockManualSelection"
     static let shellVersionKey = "CapacityDockShellVersion"
@@ -199,6 +202,7 @@ enum CapacityDockPreferences {
         let theme: CapacityDockTheme
         let gaugeShape: CapacityDockGaugeShape
         let keepExpanded: Bool
+        let ringStyle: CapacityDockRingStyle
     }
 
     static func load(defaults: UserDefaults = .standard) -> Snapshot {
@@ -260,8 +264,57 @@ enum CapacityDockPreferences {
                 .flatMap(CapacityDockTheme.init(rawValue:)) ?? .graphite,
             gaugeShape: defaults.string(forKey: gaugeShapeKey)
                 .flatMap(CapacityDockGaugeShape.init(rawValue:)) ?? .circle,
-            keepExpanded: defaults.bool(forKey: keepExpandedKey)
+            keepExpanded: defaults.bool(forKey: keepExpandedKey),
+            ringStyle: loadRingStyle(defaults: defaults)
         )
+    }
+
+    static func loadRingStyle(defaults: UserDefaults = .standard) -> CapacityDockRingStyle {
+        var style = CapacityDockRingStyle()
+        style.mode = defaults.string(forKey: ringColorModeKey)
+            .flatMap(CapacityDockRingColorMode.init(rawValue:)) ?? .status
+        style.showsSessionRing = defaults.object(forKey: showsSessionRingKey) == nil
+            ? true
+            : defaults.bool(forKey: showsSessionRingKey)
+        for slot in CapacityDockRingStyle.Slot.allCases {
+            if let rgb = defaults.string(forKey: ringColorKeyPrefix + slot.rawValue)
+                .flatMap(CapacityDockRGB.init(hex:)) {
+                style.custom[slot] = rgb
+            }
+        }
+        return style
+    }
+
+    static func setRingColorMode(_ mode: CapacityDockRingColorMode, defaults: UserDefaults = .standard) {
+        defaults.set(mode.rawValue, forKey: ringColorModeKey)
+        notifyChanged()
+    }
+
+    static func setShowsSessionRing(_ shows: Bool, defaults: UserDefaults = .standard) {
+        defaults.set(shows, forKey: showsSessionRingKey)
+        notifyChanged()
+    }
+
+    /// nil restores the system colour for that slot.
+    static func setRingColor(
+        _ color: CapacityDockRGB?,
+        for slot: CapacityDockRingStyle.Slot,
+        defaults: UserDefaults = .standard
+    ) {
+        let key = ringColorKeyPrefix + slot.rawValue
+        if let color {
+            defaults.set(color.hex, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+        notifyChanged()
+    }
+
+    static func resetRingColors(defaults: UserDefaults = .standard) {
+        for slot in CapacityDockRingStyle.Slot.allCases {
+            defaults.removeObject(forKey: ringColorKeyPrefix + slot.rawValue)
+        }
+        notifyChanged()
     }
 
     static func setEnabled(_ enabled: Bool, defaults: UserDefaults = .standard) {

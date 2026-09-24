@@ -97,6 +97,33 @@ struct QuotaSummary: Equatable {
         if let monthly = firstMatching("month") { return monthly }
         return candidates.max { lhs, rhs in lhs.percent < rhs.percent }
     }
+
+    /// The rolling short-term window (Claude / Codex / Z.ai "5-hour") drawn as
+    /// the inner ring. Scoped per-model windows ("GPT · 5-hour") are not the
+    /// session limit, and a provider whose headline already is the 5h window
+    /// gets no second ring.
+    var sessionWindow: Window? {
+        var candidates = details
+        if let primary, !candidates.contains(primary) {
+            candidates.append(primary)
+        }
+        let session = candidates.first(where: \.isSessionWindow)
+        guard let session, session != headlineWindow else { return nil }
+        return session
+    }
+}
+
+extension QuotaSummary.Window {
+    /// Whether this is the provider-wide rolling 5h window. Aggregate labels
+    /// ("Claude and GPT models · Five-hour") count; per-model slices
+    /// ("GPT-5.3-Codex-Spark · 5-hour") do not.
+    var isSessionWindow: Bool {
+        var label = self.label.lowercased()
+        for aggregate in ["claude and gpt models · ", "gemini models · "] where label.hasPrefix(aggregate) {
+            label.removeFirst(aggregate.count)
+        }
+        return ["5-hour", "5h", "five-hour"].contains { label.hasPrefix($0) }
+    }
 }
 
 /// The one user-initiated recovery action Capacity Dock may offer. Keeping the
