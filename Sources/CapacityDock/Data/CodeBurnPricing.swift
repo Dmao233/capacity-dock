@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// CodeBurn `src/models.ts` `calculateCost` / `getModelCosts` for the models
 /// this Mac actually bills. Unknown ids return $0 and stay in the total.
@@ -124,7 +125,19 @@ enum CodeBurnPricing {
         reasoningIncludedInOutput.contains(provider) ? output : output + reasoning
     }
 
+    /// Model-id lookups are pure but run several regexes; the month view
+    /// prices every event, so results are memoized per model string.
+    private struct Lookup { var key: String??; var canonical: String? }
+    private static let lookups = OSAllocatedUnfairLock(initialState: [String: Lookup]())
+
     static func resolveCanonicalModelId(_ model: String) -> String {
+        if let hit = lookups.withLock({ $0[model]?.canonical }) { return hit }
+        let value = computeCanonicalModelId(model)
+        lookups.withLock { $0[model, default: Lookup()].canonical = value }
+        return value
+    }
+
+    private static func computeCanonicalModelId(_ model: String) -> String {
         let aliased = resolveAlias(canonicalName(model))
         guard let slash = aliased.lastIndex(of: "/") else { return aliased }
         let leaf = String(aliased[aliased.index(after: slash)...])
@@ -140,6 +153,13 @@ enum CodeBurnPricing {
     /// Catalog id used for rates and context tiers. Suffixes such as
     /// `grok-4.7-build` resolve to `grok-4.7`.
     private static func matchedSnapshotKey(_ model: String) -> String? {
+        if let hit = lookups.withLock({ $0[model]?.key }) { return hit }
+        let value = computeSnapshotKey(model)
+        lookups.withLock { $0[model, default: Lookup()].key = .some(value) }
+        return value
+    }
+
+    private static func computeSnapshotKey(_ model: String) -> String? {
         let withPrefix = model.replacingOccurrences(of: #"@.*$"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"-\d{8}$"#, with: "", options: .regularExpression)
         let name = canonicalName(model)

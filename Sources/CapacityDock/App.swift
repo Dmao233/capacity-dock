@@ -81,6 +81,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await MenubarBillStore.flushCache()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 3)
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
