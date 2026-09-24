@@ -107,12 +107,22 @@ struct QuotaSummary: Equatable {
         if let primary, !candidates.contains(primary) {
             candidates.append(primary)
         }
-        let session = candidates.first { window in
-            let label = window.label.lowercased()
-            return ["5-hour", "5h", "five-hour"].contains { label.hasPrefix($0) }
-        }
+        let session = candidates.first(where: \.isSessionWindow)
         guard let session, session != headlineWindow else { return nil }
         return session
+    }
+}
+
+extension QuotaSummary.Window {
+    /// Whether this is the provider-wide rolling 5h window. Aggregate labels
+    /// ("Claude and GPT models · Five-hour") count; per-model slices
+    /// ("GPT-5.3-Codex-Spark · 5-hour") do not.
+    var isSessionWindow: Bool {
+        var label = self.label.lowercased()
+        for aggregate in ["claude and gpt models · ", "gemini models · "] where label.hasPrefix(aggregate) {
+            label.removeFirst(aggregate.count)
+        }
+        return ["5-hour", "5h", "five-hour"].contains { label.hasPrefix($0) }
     }
 }
 
