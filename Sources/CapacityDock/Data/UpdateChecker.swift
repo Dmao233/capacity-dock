@@ -27,6 +27,10 @@ struct GitHubRelease: Decodable, Equatable, Sendable {
         assets.first { $0.name.hasSuffix(".zip") && $0.name.hasPrefix("CapacityDock-") }
             ?? assets.first { $0.name.hasSuffix(".zip") }
     }
+
+    var sha256SumsAsset: Asset? {
+        assets.first { $0.name == "SHA256SUMS" }
+    }
 }
 
 enum UpdateCheckResult: Equatable, Sendable {

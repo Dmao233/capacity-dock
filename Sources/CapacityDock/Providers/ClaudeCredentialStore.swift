@@ -106,7 +106,10 @@ enum ClaudeCredentialStore {
             case .noRefreshToken:
                 return "No refresh token available; reconnect required."
             case .sourceTokenStale:
-                return "Waiting for the Claude CLI to refresh its token."
+                return NSLocalizedString(
+                    "Claude Code’s sign-in has expired. Send any message with the claude CLI to refresh it.",
+                    comment: ""
+                )
             }
         }
 

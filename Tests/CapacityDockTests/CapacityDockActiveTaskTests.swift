@@ -639,8 +639,8 @@ struct CapacityDockActiveTaskTests {
             scale: 1
         )
         #expect(live > idle)
-        #expect(live == idle + 10 + 36)
-        #expect(labeled == live + 24)
+        #expect(live == idle + 12 + 52)
+        #expect(labeled == live + 48)
     }
 
     @Test("file titles keep the last path component")
@@ -1003,5 +1003,70 @@ struct ClaudeLiveTaskTitleTests {
         #expect(ClaudeLiveSessionStore.task(for: hyphen, projectFolder: "-Users-me-code-capacity-dock").title == "capacity-dock")
         let chinese = try transcript(cwd: "/Users/me/Desktop/项目/独立开发")
         #expect(ClaudeLiveSessionStore.task(for: chinese, projectFolder: "-Users-me-Desktop------").title == "独立开发")
+    }
+}
+
+@Suite("Claude desktop session titles")
+struct ClaudeDesktopSessionTitleTests {
+    @Test("Desktop metadata supplies the sidebar title and the originating project")
+    func parsesDesktopSession() throws {
+        let parsed = try #require(ClaudeDesktopSessionIndex.session(from: [
+            "cliSessionId": "ef6ece11",
+            "title": " 自动下载并安装更新 ",
+            "cwd": "/Users/me/capacity-dock/.claude/worktrees/feature",
+            "originCwd": "/Users/me/capacity-dock"
+        ]))
+        #expect(parsed.id == "ef6ece11")
+        #expect(parsed.session.title == "自动下载并安装更新")
+
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("ef6ece11.jsonl")
+        let task = ClaudeLiveSessionStore.task(for: file, projectFolder: "-x", desktopSession: parsed.session)
+        #expect(task.title == "自动下载并安装更新")
+        #expect(task.workspace == "capacity-dock")
+    }
+
+    @Test("Worktree cwd without originCwd still groups under the repository")
+    func worktreeFallback() throws {
+        let parsed = try #require(ClaudeDesktopSessionIndex.session(from: [
+            "cliSessionId": "a",
+            "title": "Fix",
+            "cwd": "/Users/me/capacity-dock/.claude/worktrees/feature"
+        ]))
+        #expect(CapacityDockActiveTask(id: "a", title: "Fix", workspace: parsed.session.projectPath).workspace == "capacity-dock")
+    }
+
+    @Test("Sessions without a title or CLI id are skipped")
+    func skipsIncomplete() {
+        #expect(ClaudeDesktopSessionIndex.session(from: ["cliSessionId": "a", "title": "  "]) == nil)
+        #expect(ClaudeDesktopSessionIndex.session(from: ["title": "Fix"]) == nil)
+    }
+
+    @Test("Index reads local_*.json two levels down")
+    func readsIndexDirectory() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let org = root.appendingPathComponent("account/org", isDirectory: true)
+        try FileManager.default.createDirectory(at: org, withIntermediateDirectories: true)
+        let json = #"{"cliSessionId":"s1","title":"Ship it","originCwd":"/Users/me/repo"}"#
+        try Data(json.utf8).write(to: org.appendingPathComponent("local_1.json"))
+        try Data(json.utf8).write(to: org.appendingPathComponent("archived-sessions.idx"))
+        let sessions = ClaudeDesktopSessionIndex(root: root).sessions()
+        #expect(sessions == ["s1": .init(title: "Ship it", projectPath: "/Users/me/repo")])
+    }
+}
+
+@Suite("Active task groups")
+struct CapacityDockActiveTaskGroupTests {
+    @Test("Tasks group by project in first-seen order")
+    func groupsByWorkspace() {
+        let tasks = [
+            CapacityDockActiveTask(id: "1", title: "A", workspace: "/r/capacity-dock"),
+            CapacityDockActiveTask(id: "2", title: "B", workspace: "/r/erp"),
+            CapacityDockActiveTask(id: "3", title: "C", workspace: "/r/capacity-dock"),
+            CapacityDockActiveTask(id: "4", title: "D")
+        ]
+        let groups = CapacityDockActiveTaskGroup.groups(from: tasks)
+        #expect(groups.map(\.workspace) == ["capacity-dock", "erp", nil])
+        #expect(groups[0].tasks.map(\.id) == ["1", "3"])
     }
 }

@@ -101,6 +101,7 @@ enum CapacityDockMetrics {
     static func detailHeight(
         quota: QuotaSummary?,
         activeTaskCount: Int = 0,
+        /// Number of project headers, i.e. task groups that have a workspace.
         activeTaskWorkspaceCount: Int = 0,
         scale: CGFloat
     ) -> CGFloat {
@@ -119,8 +120,9 @@ enum CapacityDockMetrics {
         case .connected: 0
         }
         let taskCount = max(activeTaskCount, 0)
-        let workspaceLines = min(max(activeTaskWorkspaceCount, 0), taskCount)
-        let taskExtra: CGFloat = taskCount == 0 ? 0 : 10 + CGFloat(taskCount) * 18 + CGFloat(workspaceLines) * 12
+        // One header (plus group spacing) per project; each task is one line.
+        let projectHeaders = min(max(activeTaskWorkspaceCount, 0), taskCount)
+        let taskExtra: CGFloat = taskCount == 0 ? 0 : 12 + CGFloat(taskCount) * 26 + CGFloat(projectHeaders) * 24
         let base = max(132, 88 + CGFloat(rows) * 62 + CGFloat(footer) + actionExtra + connectionExtra + taskExtra)
         return base * scale
     }
@@ -1432,36 +1434,8 @@ struct CapacityDockDetailView: View {
                     }
                     .padding(.horizontal, 4 * model.detailScale)
                 }
-                let liveTasks = model.activeTasks
-                if !liveTasks.isEmpty {
-                    let scale = model.detailScale
-                    VStack(alignment: .leading, spacing: 6 * scale) {
-                        HStack(spacing: 6 * scale) {
-                            CapacityDockLiveDot(size: 9 * scale)
-                            Text(String(format: NSLocalizedString("%d running tasks", comment: ""), liveTasks.count))
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Color.capacityDockText.opacity(0.62))
-                        }
-                        .padding(.horizontal, 4 * scale)
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(liveTasks.enumerated()), id: \.element.id) { index, task in
-                                if index > 0 {
-                                    Rectangle()
-                                        .fill(Color.white.opacity(0.08))
-                                        .frame(height: 0.5)
-                                        .padding(.leading, 12 * scale)
-                                }
-                                CapacityDockActiveTaskRow(task: task, scale: scale)
-                                    .padding(.horizontal, 12 * scale)
-                                    .padding(.vertical, 8 * scale)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                        .background(
-                            RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
-                                .fill(Color.white.opacity(0.07))
-                        )
-                    }
+                if !model.activeTasks.isEmpty {
+                    CapacityDockActiveTaskList(tasks: model.activeTasks, scale: model.detailScale)
                 }
             } else {
                 Text(ProviderConnectionGuidance.dockInstruction(for: provider))
@@ -1527,29 +1501,56 @@ struct CapacityDockDetailView: View {
     }
 }
 
-private struct CapacityDockActiveTaskRow: View {
-    let task: CapacityDockActiveTask
+/// Running tasks grouped by project, laid out like the Claude sidebar: a
+/// muted project header, then one line per task with a live spinner.
+private struct CapacityDockActiveTaskList: View {
+    let tasks: [CapacityDockActiveTask]
     let scale: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2 * scale) {
-            Text(task.title)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.capacityDockText.opacity(0.92))
-                .fixedSize(horizontal: false, vertical: true)
-            if let workspace = task.workspace {
-                Label {
-                    Text(workspace)
-                } icon: {
-                    Image(systemName: "folder")
+        VStack(alignment: .leading, spacing: 8 * scale) {
+            ForEach(CapacityDockActiveTaskGroup.groups(from: tasks)) { group in
+                VStack(alignment: .leading, spacing: 1 * scale) {
+                    if let workspace = group.workspace {
+                        Text(workspace)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.capacityDockText.opacity(0.45))
+                            .lineLimit(1)
+                            .padding(.horizontal, 8 * scale)
+                            .padding(.bottom, 2 * scale)
+                    }
+                    ForEach(group.tasks) { task in
+                        CapacityDockActiveTaskRow(task: task, scale: scale)
+                    }
                 }
-                .labelStyle(.titleAndIcon)
-                .font(.system(size: 10.5))
-                .foregroundStyle(Color.capacityDockText.opacity(0.5))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+private struct CapacityDockActiveTaskRow: View {
+    let task: CapacityDockActiveTask
+    let scale: CGFloat
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 8 * scale) {
+            CapacityDockLiveDot(size: 10 * scale)
+                .frame(width: 14 * scale)
+            Text(task.title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.capacityDockText.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8 * scale)
+        .padding(.vertical, 6 * scale)
+        .background(
+            RoundedRectangle(cornerRadius: 8 * scale, style: .continuous)
+                .fill(Color.white.opacity(isHovered ? 0.09 : 0))
+        )
+        .onHover { isHovered = $0 }
         .help(helpText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
