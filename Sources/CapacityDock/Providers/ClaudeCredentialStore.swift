@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 
 /// Owns the lifecycle of Claude OAuth credentials:
@@ -56,6 +57,7 @@ enum ClaudeCredentialStore {
         userDefaultsOverride = nil
         keychainCache = LiveKeychainCredentialCache()
         lastCacheDeleteResult = nil
+        sourcePlanMemo.withLock { $0 = nil }
         unlinkLegacyOverride = nil
         tightenLegacyOverride = nil
         lock.withLock { memoryCache = nil }
@@ -257,8 +259,31 @@ enum ClaudeCredentialStore {
         return nil
     }
 
+    /// Pro logins carry `rateLimitTier: "default_claude_ai"`, which names no
+    /// plan; `subscriptionType` ("pro", "max", …) does. Prefer it when present.
+    static func planHint(subscriptionType: String?, rateLimitTier: String?) -> String? {
+        guard let type = subscriptionType?.trimmingCharacters(in: .whitespacesAndNewlines), !type.isEmpty else {
+            return rateLimitTier
+        }
+        // Keep the Max multiplier, which only the rate-limit tier spells out.
+        if type.lowercased().contains("max"), let rateLimitTier,
+           SubscriptionUsage.tier(from: rateLimitTier) != .unknown {
+            return rateLimitTier
+        }
+        return type
+    }
+
+    /// Plan read from the Claude source for caches written before the plan
+    /// hint existed; looked up once per launch.
+    private static let sourcePlanMemo = OSAllocatedUnfairLock<String??>(initialState: nil)
+
     static func subscriptionTier() throws -> String? {
-        try currentRecord()?.rateLimitTier
+        let cached = try currentRecord()?.rateLimitTier
+        if SubscriptionUsage.tier(from: cached) != .unknown { return cached }
+        if let memo = sourcePlanMemo.withLock({ $0 }) { return memo ?? cached }
+        let source = readClaudeSourceSilently()?.rateLimitTier
+        sourcePlanMemo.withLock { $0 = .some(source) }
+        return source ?? cached
     }
 
     // MARK: - Bootstrap source
@@ -368,6 +393,7 @@ enum ClaudeCredentialStore {
             let refreshToken: String?
             let expiresAt: Double?
             let rateLimitTier: String?
+            let subscriptionType: String?
         }
         do {
             let root = try JSONDecoder().decode(Root.self, from: data)
@@ -379,7 +405,7 @@ enum ClaudeCredentialStore {
                 accessToken: token,
                 refreshToken: oauth.refreshToken,
                 expiresAt: oauth.expiresAt.map { Date(timeIntervalSince1970: $0 / 1000.0) },
-                rateLimitTier: oauth.rateLimitTier
+                rateLimitTier: planHint(subscriptionType: oauth.subscriptionType, rateLimitTier: oauth.rateLimitTier)
             )
         } catch {
             throw StoreError.bootstrapDecodeFailed

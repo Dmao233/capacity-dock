@@ -782,3 +782,20 @@ struct CapacityDockPresentationTests {
         ) == .requiresCredential)
     }
 }
+
+@Suite("Claude plan detection")
+struct ClaudePlanDetectionTests {
+    @Test("Pro login with a generic rate-limit tier is shown as Pro")
+    func proFromSubscriptionType() {
+        let hint = ClaudeCredentialStore.planHint(subscriptionType: "pro", rateLimitTier: "default_claude_ai")
+        #expect(SubscriptionUsage.tier(from: hint) == .pro)
+        #expect(SubscriptionUsage.tier(from: "default_claude_ai") == .unknown)
+    }
+
+    @Test("Max keeps the multiplier from the rate-limit tier")
+    func maxMultiplier() {
+        let hint = ClaudeCredentialStore.planHint(subscriptionType: "max", rateLimitTier: "default_claude_max_20x")
+        #expect(SubscriptionUsage.tier(from: hint) == .max20x)
+        #expect(SubscriptionUsage.tier(from: ClaudeCredentialStore.planHint(subscriptionType: nil, rateLimitTier: "default_claude_max_5x")) == .max5x)
+    }
+}
