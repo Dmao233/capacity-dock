@@ -59,7 +59,7 @@ Capacity Dock 是 macOS 14+ 的菜单栏附属应用，没有 Dock 图标。它�
 | 配额环 | 待机只留首选环；悬停展开已选服务商和详情 |
 | 详情 | 进度、重置时间、套餐、连接；进行中任务显示工作区和会话标题 |
 | 本机读取 | Codex、Claude、Cursor、Gemini、Antigravity、Copilot、Kimi Code、Grok 读本机登录；ClinePass、Z.ai 也可在设置里填密钥 |
-| 设置 | 左侧边栏：通用 / 消耗 / 关于 / 服务商，可检查更新 |
+| 设置 | 左侧边栏：通用 / 消耗 / 关于 / 服务商，可检查更新并一键下载安装 |
 | 消耗概览 | 菜单栏显示今日估算金额；点击后在下方打开紧凑账单，按今天 / 近 7 天 / 本月查看汇总 |
 | 图表与明细 | 用量构成、独立近 30 天趋势、近 81 天活动热力图；悬停查看当天模型用量与估算金额 |
 | 模型 / 服务商 | 下方分组切换、展开 token 明细，保留固定币种入口 |
@@ -100,7 +100,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.6
+Scripts/package-app.sh 0.3.7
 open .build/dist/CapacityDock.app
 ```
 

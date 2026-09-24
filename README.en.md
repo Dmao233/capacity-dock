@@ -59,7 +59,7 @@ Rail geometry, hover, and the detail card come from [CodeBurn](https://github.co
 | Quota rings | Rest shows the preferred ring; hover expands the selected set and the detail card |
 | Detail | Progress, reset time, plan, connect; live rows show the workspace and conversation title |
 | Local logins | Reads Codex, Claude, Cursor, Gemini, Antigravity, Copilot, Kimi Code, and Grok from this Mac; ClinePass and Z.ai can also take a key in Settings |
-| Settings | Sidebar for General / Usage / About / providers, plus a GitHub update check |
+| Settings | Sidebar for General / Usage / About / providers, plus a GitHub update check with one-click download and install |
 | Usage overview | Today’s estimate in the menu bar; a compact popover with Today / 7 Days / This Month summaries |
 | Charts and details | Token composition, an independent 30-day trend, and an 81-day activity heatmap; hover for daily model usage and estimated cost |
 | Models / providers | Switch grouping below the chart and expand token details; currency controls stay visible |
@@ -100,7 +100,7 @@ Needs **Swift 6** (Xcode 16 or [swift.org](https://www.swift.org/install/macos/)
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.6
+Scripts/package-app.sh 0.3.7
 open .build/dist/CapacityDock.app
 ```
 

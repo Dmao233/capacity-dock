@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SQLite3
 
 /// A live unit of work for the Capacity Dock detail card. Idle providers
@@ -13,6 +14,28 @@ struct CapacityDockActiveTask: Equatable, Identifiable, Sendable {
         self.title = title
         let place = LiveActivityPath.displayWorkspace(workspace)
         self.workspace = place == title ? nil : place
+    }
+}
+
+/// Tasks sharing a project, in the order the project first appears (the
+/// store already ranks tasks by recency). Tasks with no project form a
+/// header-less group.
+struct CapacityDockActiveTaskGroup: Equatable, Identifiable {
+    let workspace: String?
+    var tasks: [CapacityDockActiveTask]
+
+    var id: String { workspace ?? "" }
+
+    static func groups(from tasks: [CapacityDockActiveTask]) -> [CapacityDockActiveTaskGroup] {
+        var groups: [CapacityDockActiveTaskGroup] = []
+        for task in tasks {
+            if let index = groups.firstIndex(where: { $0.workspace == task.workspace }) {
+                groups[index].tasks.append(task)
+            } else {
+                groups.append(CapacityDockActiveTaskGroup(workspace: task.workspace, tasks: [task]))
+            }
+        }
+        return groups
     }
 }
 
@@ -756,6 +779,7 @@ struct CodexLiveSessionStore {
 
 struct ClaudeLiveSessionStore {
     let roots: [URL]
+    let desktopSessions: ClaudeDesktopSessionIndex
 
     init(home: URL = FileManager.default.homeDirectoryForCurrentUser) {
         roots = [
@@ -765,10 +789,17 @@ struct ClaudeLiveSessionStore {
                 isDirectory: true
             )
         ]
+        desktopSessions = ClaudeDesktopSessionIndex(
+            root: home.appendingPathComponent(
+                "Library/Application Support/Claude/claude-code-sessions",
+                isDirectory: true
+            )
+        )
     }
 
     func tasks(since cutoff: Date) -> [CapacityDockActiveTask] {
         var ranked: [(Date, CapacityDockActiveTask)] = []
+        let titles = desktopSessions.sessions()
         for root in roots {
             guard let projects = try? FileManager.default.contentsOfDirectory(
                 at: root,
@@ -786,7 +817,11 @@ struct ClaudeLiveSessionStore {
                           modified >= cutoff else { continue }
                     ranked.append((
                         modified,
-                        Self.task(for: file, projectFolder: project.lastPathComponent)
+                        Self.task(
+                            for: file,
+                            projectFolder: project.lastPathComponent,
+                            desktopSession: titles[file.deletingPathExtension().lastPathComponent]
+                        )
                     ))
                 }
             }
@@ -798,7 +833,20 @@ struct ClaudeLiveSessionStore {
     /// into "-", so it cannot be decoded reliably ("capacity-dock" comes back
     /// as "capacity/dock"). The transcript's own `cwd` is exact; the folder
     /// name is only the fallback.
-    static func task(for file: URL, projectFolder: String) -> CapacityDockActiveTask {
+    static func task(
+        for file: URL,
+        projectFolder: String,
+        desktopSession: ClaudeDesktopSessionIndex.Session? = nil
+    ) -> CapacityDockActiveTask {
+        // Claude desktop sessions carry the title shown in its sidebar and the
+        // project they were started from; prefer those over folder names.
+        if let desktopSession {
+            return CapacityDockActiveTask(
+                id: file.lastPathComponent,
+                title: desktopSession.title,
+                workspace: desktopSession.projectPath
+            )
+        }
         let cwd = cachedWorkingDirectory(for: file)
         let path = cwd ?? LiveActivityPath.claudeProjectPath(projectFolder)
         if let worktree = LiveActivityPath.claudeWorktree(path) {
@@ -825,6 +873,95 @@ struct ClaudeLiveSessionStore {
         }
         workingDirectories.setObject(cwd as NSString, forKey: key)
         return cwd
+    }
+}
+
+/// Session titles from the Claude desktop app's Code tab. Each
+/// `local_*.json` maps the CLI transcript id (`cliSessionId`) to the sidebar
+/// title and the project folder it was started from. Files are re-parsed only
+/// when their modification date changes.
+struct ClaudeDesktopSessionIndex: Sendable {
+    struct Session: Equatable, Sendable {
+        let title: String
+        let projectPath: String?
+    }
+
+    let root: URL
+
+    private struct Entry {
+        let modified: Date
+        let cliSessionID: String?
+        let session: Session?
+    }
+
+    private static let cache = OSAllocatedUnfairLock<[String: Entry]>(initialState: [:])
+
+    /// Keyed by `cliSessionId`, which is the transcript file's base name.
+    func sessions() -> [String: Session] {
+        var result: [String: Session] = [:]
+        for file in metadataFiles() {
+            guard let modified = LiveActivityPath.modificationDate(file) else { continue }
+            let key = file.path
+            let entry: Entry
+            if let cached = Self.cache.withLock({ $0[key] }), cached.modified == modified {
+                entry = cached
+            } else {
+                entry = Self.parse(file, modified: modified)
+                Self.cache.withLock { $0[key] = entry }
+            }
+            if let id = entry.cliSessionID, let session = entry.session {
+                result[id] = session
+            }
+        }
+        return result
+    }
+
+    private func metadataFiles() -> [URL] {
+        // claude-code-sessions/<account>/<org>/local_<id>.json
+        var files: [URL] = []
+        for account in Self.directories(in: root) {
+            for org in Self.directories(in: account) {
+                let entries = (try? FileManager.default.contentsOfDirectory(
+                    at: org,
+                    includingPropertiesForKeys: [.contentModificationDateKey],
+                    options: [.skipsHiddenFiles]
+                )) ?? []
+                files += entries.filter {
+                    $0.pathExtension == "json" && $0.lastPathComponent.hasPrefix("local_")
+                }
+            }
+        }
+        return files
+    }
+
+    private static func directories(in url: URL) -> [URL] {
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return entries.filter(LiveActivityPath.isDirectory)
+    }
+
+    static func session(from object: [String: Any]) -> (id: String, session: Session)? {
+        guard let id = object["cliSessionId"] as? String, !id.isEmpty,
+              let rawTitle = object["title"] as? String else { return nil }
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        let origin = (object["originCwd"] as? String) ?? (object["cwd"] as? String)
+        let project = origin.map { path in
+            LiveActivityPath.claudeWorktree(path)?.repository ?? path
+        }
+        return (id, Session(title: title, projectPath: project))
+    }
+
+    private static func parse(_ file: URL, modified: Date) -> Entry {
+        guard let data = try? SafeFile.read(from: file.path, maxBytes: 1_048_576),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let parsed = session(from: object) else {
+            return Entry(modified: modified, cliSessionID: nil, session: nil)
+        }
+        return Entry(modified: modified, cliSessionID: parsed.id, session: parsed.session)
     }
 }
 

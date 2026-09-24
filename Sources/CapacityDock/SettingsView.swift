@@ -527,6 +527,7 @@ private struct AboutSettingsTab: View {
     var store: CapacityDockStore
     @State private var updateResult: UpdateCheckResult?
     @State private var isCheckingUpdate = false
+    private var installer: UpdateInstaller { .shared }
 
     var body: some View {
         Form {
@@ -540,7 +541,7 @@ private struct AboutSettingsTab: View {
             } header: {
                 Text("Updates")
             } footer: {
-                Text("Checks the latest GitHub Release. New builds are ad-hoc signed, so replace the app from the zip rather than using a Sparkle feed.")
+                Text("Checks the latest GitHub Release. Download and Install verifies the zip against SHA256SUMS, replaces this copy, and relaunches. Builds are ad-hoc signed, so macOS may ask for Keychain access again after an update.")
             }
         }
         .formStyle(.grouped)
@@ -573,17 +574,64 @@ private struct AboutSettingsTab: View {
             case .available(let release):
                 VStack(alignment: .leading, spacing: 8) {
                     Text(String(format: NSLocalizedString("%@ is available", comment: ""), release.version))
-                    Button("Open Release Page") {
-                        if let url = URL(string: release.htmlURL) {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }
+                    installControls(for: release)
                 }
             case .failed(let message):
                 Text(message)
                     .foregroundStyle(.red)
             case .none:
                 EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func installControls(for release: GitHubRelease) -> some View {
+        let openReleasePage = {
+            if let url = URL(string: release.htmlURL) {
+                NSWorkspace.shared.open(url)
+            }
+        }
+        switch installer.location {
+        case .unsupported(let reason):
+            Text(reason)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button("Open Release Page", action: openReleasePage)
+        case .installable:
+            switch installer.phase {
+            case .downloading(let fraction):
+                HStack {
+                    if let fraction {
+                        ProgressView(value: fraction)
+                        Text(fraction, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Downloading…")
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Cancel") { installer.cancel() }
+                }
+            case .verifying, .installing, .relaunching:
+                HStack {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(installer.phase == .verifying ? LocalizedStringKey("Verifying…") : LocalizedStringKey("Installing…"))
+                        .foregroundStyle(.secondary)
+                }
+            case .idle, .failed:
+                if case .failed(let message) = installer.phase {
+                    Text(message)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Button("Download and Install") { installer.install(release) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Open Release Page", action: openReleasePage)
+                }
             }
         }
     }
