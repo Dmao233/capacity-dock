@@ -59,11 +59,11 @@ enum CapacityDockMetrics {
     static func innerRingStrokeWidth(scale: CGFloat) -> CGFloat { max(1, baseInnerRingStrokeWidth * scale) }
     static func nestedProviderIconSize(scale: CGFloat) -> CGFloat { points(baseNestedProviderIconSize, scale) }
     static func percentageTextSize(scale: CGFloat) -> CGFloat { points(basePercentageTextSize, scale) }
-    /// The ring + percentage block is centred as a whole, which leaves the
-    /// ring (what the eye reads as the centre) half a label too high.
-    /// Shifting by that much centres the ring and lets the label hang below.
+    /// Centring the ring + percentage block leaves the ring half a label
+    /// high; centring the ring alone lets the label drag the group low.
+    /// Half way sits the ring just above the middle, where it reads centred.
     static func ringOpticalOffset(scale: CGFloat) -> CGFloat {
-        points((baseRingLabelSpacing + basePercentageTextSize * 1.2) / 2, scale)
+        points((baseRingLabelSpacing + basePercentageTextSize * 1.2) / 4, scale)
     }
     static func detailWidth(scale: CGFloat, hasTasks: Bool = false) -> CGFloat {
         points(baseDetailWidth + (hasTasks ? 60 : 0), scale)
