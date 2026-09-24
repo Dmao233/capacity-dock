@@ -290,7 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         let appearance = UserDefaults.standard.string(forKey: "CapacityDockBillAppearance") ?? "dark"
         window.appearance = appearance == "system" ? nil : NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
-        window.backgroundColor = NSColor(CapacityDockInterfacePalette.surface(appearance == "light" ? .light : .dark))
+        window.backgroundColor = .windowBackgroundColor
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.contentMinSize = NSSize(width: 880, height: 620)

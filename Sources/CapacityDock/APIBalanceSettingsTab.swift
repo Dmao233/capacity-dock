@@ -182,6 +182,7 @@ struct APIBalanceLogo: View {
 
 /// A compact balance strip shared by the popover and the full usage page.
 struct APIBalanceSummary: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var store = APIBalanceStore.shared
     @State private var expanded = false
     var body: some View {
@@ -194,9 +195,10 @@ struct APIBalanceSummary: View {
                         } else { Image(systemName: "creditcard") }
                         Text("API 剩余")
                         Spacer()
-                        Text(store.menuText ?? "—").monospacedDigit()
-                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                    }.font(.system(size: 11, weight: .medium)).contentShape(Rectangle())
+                        Text(store.menuText ?? "—").font(.system(size: 13, weight: .semibold, design: .rounded)).monospacedDigit()
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                    }.font(.system(size: 12, weight: .medium)).contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 if expanded {
                     ScrollView {
@@ -227,7 +229,8 @@ struct APIBalanceSummary: View {
                         }
                     }.font(.system(size: 10))
                 }
-            }.padding(9).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 9))
+            }.padding(.horizontal, 12).padding(.vertical, 10)
+                .background(CapacityDockInterfacePalette.tokens(colorScheme).card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .onAppear { store.refresh() }
         }
     }
