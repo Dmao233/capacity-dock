@@ -29,6 +29,7 @@ enum CodeBurnPricing {
     /// https://docs.x.ai/developers/pricing (verified 2026-09-22)
     private static let grokLongContextPromptThreshold = 200_000
     private static let grokLongContextModels: Set<String> = ["grok-4.6", "grok-4.7"]
+    private static let gpt6LongContextModels: Set<String> = ["gpt-6-astra", "gpt-6-sol"]
     private static let reasoningIncludedInOutput: Set<String> = ["claude", "codex", "copilot"]
 
     private static let aliases: [String: String] = [
@@ -36,6 +37,7 @@ enum CodeBurnPricing {
         "claude-haiku-4.5": "claude-haiku-4-5",
         "claude-sonnet-4.6": "claude-sonnet-4-6",
         "claude-sonnet-4.5": "claude-sonnet-4-5",
+        "claude-opus-5.5": "claude-opus-5-5",
         "claude-opus-4.7": "claude-opus-4-7",
         "claude-opus-4.6": "claude-opus-4-6",
         "claude-opus-4.5": "claude-opus-4-5",
@@ -71,6 +73,8 @@ enum CodeBurnPricing {
         // OpenAI standard API rates, verified 2026-09-07:
         // https://developers.openai.com/api/docs/models/gpt-6-astra
         "gpt-6-astra": .init(input: 10e-6, output: 50e-6, cacheWrite: 12.5e-6, cacheRead: 1e-6, fast: 2),
+        // https://developers.openai.com/api/docs/models/gpt-6-sol (verified 2026-09-24)
+        "gpt-6-sol": .init(input: 2e-6, output: 10e-6, cacheWrite: 2.5e-6, cacheRead: 0.2e-6, fast: 2),
         "grok-4.7": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 5e-7),
         "grok-4.6": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 5e-7),
         "grok-4.5": .init(input: 2e-6, output: 6e-6, cacheWrite: nil, cacheRead: 3e-7),
@@ -93,6 +97,9 @@ enum CodeBurnPricing {
         "claude-opus-4-5": .init(input: 5e-6, output: 2.5e-5, cacheWrite: 6.25e-6, cacheRead: 5e-7),
         "claude-haiku-4-5": .init(input: 1e-6, output: 5e-6, cacheWrite: 1.25e-6, cacheRead: 1e-7),
         "claude-fable-5": .init(input: 1e-5, output: 5e-5, cacheWrite: 1.25e-5, cacheRead: 1e-6),
+        // Cache hits are 0.05x input on Opus 5.5; 1M context at standard rates.
+        // https://platform.claude.com/docs/en/about-claude/pricing (verified 2026-09-24)
+        "claude-opus-5-5": .init(input: 4e-6, output: 2e-5, cacheWrite: 5e-6, cacheRead: 2e-7, fast: 2),
         "gemini-3.1-pro-preview": .init(input: 2e-6, output: 1.2e-5, cacheWrite: nil, cacheRead: 2e-7),
         "gemini-3-pro-preview": .init(input: 2e-6, output: 1.2e-5, cacheWrite: nil, cacheRead: 2e-7),
         "gemini-3-flash-preview": .init(input: 5e-7, output: 3e-6, cacheWrite: nil, cacheRead: 5e-8),
@@ -275,7 +282,9 @@ enum CodeBurnPricing {
     private static func tieredCosts(
         model: String, base: ModelCosts, promptTokens: Int, cacheCreationTokens: Int
     ) -> ModelCosts {
-        if resolveCanonicalModelId(model) == "gpt-6-astra",
+        // Both GPT-6 cards bill the whole request at 2x input/cache and 1.5x
+        // output once the prompt exceeds 272K tokens.
+        if gpt6LongContextModels.contains(resolveCanonicalModelId(model)),
            promptTokens + cacheCreationTokens > 272_000 {
             var high = base
             high.inputCostPerToken *= 2

@@ -204,7 +204,7 @@ struct TokenConsumptionTests {
         #expect(row.unpricedEventCount == 0)
         // Output already includes reasoning: 150 + 10 + 62.5 + 300 microdollars.
         #expect(abs((row.estimatedUSD ?? 0) - 0.0005225) < 1e-10)
-        #expect(TokenLogDayCache.load(from: cacheURL).version == 6)
+        #expect(TokenLogDayCache.load(from: cacheURL).version == 7)
         let cached = LocalTokenLogReader.load(period: .today, deps: deps)
         #expect(cached == snapshot)
     }
@@ -606,5 +606,48 @@ struct TokenConsumptionTests {
             cacheReadTokens: twoTurns.cacheRead
         )
         #expect(sessionCost == 0.62)
+    }
+}
+
+@Suite("2026-09 model prices")
+struct NewModelPricingTests {
+    @Test("Claude Opus 5.5 uses $4 / $5 write / $0.20 read / $20 per MTok", arguments: ["claude-opus-5-5", "claude-opus-5.5", "anthropic/claude-opus-5-5"])
+    func opus55(model: String) {
+        let cost = CodeBurnPricing.calculateCost(
+            model: model, inputTokens: 1_000_000, outputTokens: 1_000_000,
+            cacheCreationTokens: 1_000_000, cacheReadTokens: 1_000_000
+        )
+        #expect(abs(cost - (4 + 20 + 5 + 0.2)) < 1e-9)
+        // 1M context at standard rates: no long-context tier.
+        let long = CodeBurnPricing.calculateCost(model: model, inputTokens: 900_000, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0)
+        #expect(abs(long - 3.6) < 1e-9)
+    }
+
+    @Test("GPT-6 Sol uses $2 / $2.50 write / $0.20 read / $10, and the 272K tier")
+    func gpt6Sol() {
+        let base = CodeBurnPricing.calculateCost(
+            model: "gpt-6-sol", inputTokens: 100_000, outputTokens: 10_000,
+            cacheCreationTokens: 10_000, cacheReadTokens: 100_000
+        )
+        #expect(abs(base - (0.2 + 0.1 + 0.025 + 0.02)) < 1e-9)
+        let long = CodeBurnPricing.calculateCost(
+            model: "gpt-6-sol", inputTokens: 300_000, outputTokens: 10_000,
+            cacheCreationTokens: 0, cacheReadTokens: 0
+        )
+        #expect(abs(long - (0.6 * 2 + 0.1 * 1.5)) < 1e-9)
+        #expect(CodeBurnPricing.getModelCosts("gpt-6-sol")?.cacheWriteCostIsExplicit == true)
+    }
+
+    @Test("Cached gpt-6-sol files from older caches are dropped for reparsing")
+    func repricedCacheEntries() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("reprice-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("cache.json")
+        let v6 = #"{"version":6,"files":{"/x/sol.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-sol",7,1,0,0,0,1]]},"/x/astra.jsonl":{"size":1,"mtime":1,"events":[["codex",100,"gpt-6-astra",7,1,0,0,0,1]]}}}"#
+        try Data(v6.utf8).write(to: url)
+        let cache = TokenLogDayCache.load(from: url)
+        #expect(cache.files["/x/sol.jsonl"] == nil)
+        #expect(cache.files["/x/astra.jsonl"] != nil)
     }
 }
