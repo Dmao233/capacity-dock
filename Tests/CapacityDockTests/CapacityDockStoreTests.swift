@@ -53,3 +53,23 @@ struct CapacityDockStoreTests {
         #expect(CapacityDockQuotaPresentation.ringPercentLabel(quota: disconnected) == "-")
     }
 }
+
+@Suite("Live refresh schedule")
+struct LiveRefreshScheduleTests {
+    @Test("Connected providers poll every minute; unconfigured ones back off")
+    func intervals() {
+        #expect(LiveRefreshSchedule.interval(after: .connected) == 60)
+        #expect(LiveRefreshSchedule.interval(after: .transientFailure) == 120)
+        #expect(LiveRefreshSchedule.interval(after: .disconnected) == 300)
+        #expect(LiveRefreshSchedule.interval(after: nil) == 300)
+        #expect(LiveRefreshSchedule.interval(after: .terminalFailure(reason: nil)) == 600)
+    }
+
+    @Test("A provider is due when it has never run or its time has come")
+    func due() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        #expect(LiveRefreshSchedule.isDue(nil, now: now))
+        #expect(LiveRefreshSchedule.isDue(now, now: now))
+        #expect(!LiveRefreshSchedule.isDue(now.addingTimeInterval(1), now: now))
+    }
+}

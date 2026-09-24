@@ -11,6 +11,10 @@ enum LocalTokenLogReader {
         var timeZone: TimeZone
         var cacheURL: URL?
         var progress: (@Sendable (Int, Int) -> Void)? = nil
+        /// Minimum seconds between cache writes. The resident app keeps the
+        /// cache in memory and flushes on quit, so rewriting ~100 MB of history
+        /// every minute bought nothing; one-shot callers keep 0 (always write).
+        var cacheSaveInterval: TimeInterval = 0
 
         static func live(now: Date = Date()) -> Deps {
             let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -21,7 +25,8 @@ enum LocalTokenLogReader {
                 timeZone: .current,
                 cacheURL: root
                     .appendingPathComponent("CapacityDock", isDirectory: true)
-                    .appendingPathComponent("token-log-cache.json")
+                    .appendingPathComponent("token-log-cache.json"),
+                cacheSaveInterval: 600
             )
         }
     }
@@ -74,7 +79,7 @@ enum LocalTokenLogReader {
             }
         }
 
-        cache.save(to: deps.cacheURL)
+        cache.saveIfDue(to: deps.cacheURL, interval: deps.cacheSaveInterval)
         return TokenConsumptionAggregator.snapshot(
             period: period,
             window: window,
@@ -89,6 +94,23 @@ enum LocalTokenLogReader {
         var events: [TokenConsumptionEvent]
         var availability: TokenLogAvailability
         var sawLogFile: Bool
+    }
+}
+
+extension LocalTokenLogReader {
+    /// Per-file Codex parser state. Kept between scans so a growing rollout
+    /// resumes from its last line instead of being reparsed from the start.
+    struct CodexParseState: Sendable, Equatable {
+        var model: String?
+        var sessionID: String
+        var forkCutoff: String?
+        var prevCumulative: Int?
+        var prevInput = 0
+        var prevCached = 0
+        var prevCacheWrite = 0
+        var prevOutput = 0
+        var prevReasoning = 0
+        var seenKeys = Set<String>()
     }
 }
 
@@ -251,8 +273,15 @@ private extension LocalTokenLogReader {
         }
         var events: [TokenConsumptionEvent] = []
         for file in files {
-            events.append(contentsOf: cachedOrParse(file: file, providerID: "claude", window: window, deps: deps, cache: &cache) { line in
-                TokenLogLineParser.claudeEvent(from: line).map { [$0] } ?? []
+            events.append(contentsOf: incrementalParse(
+                file: file, providerID: "claude", window: window, cache: &cache,
+                initial: TokenLogDayCache.ParserState.none
+            ) { bytes, _ in
+                // Only assistant turns carry usage; skip the rest before
+                // building a String or running the JSON decoder.
+                guard JSONLStreamer.contains(bytes, "\"usage\""),
+                      JSONLStreamer.contains(bytes, "\"assistant\"") else { return nil }
+                return TokenLogLineParser.claudeEvent(from: JSONLStreamer.string(bytes))
             })
         }
         return ScanResult(events: events, availability: .logged, sawLogFile: true)
@@ -321,116 +350,139 @@ private extension LocalTokenLogReader {
         deps: Deps,
         cache: inout TokenLogDayCache
     ) -> [TokenConsumptionEvent] {
-        let fingerprint = TokenLogDayCache.fingerprint(of: file)
-        if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: "codex", window: window) {
-            return cached
+        incrementalParse(
+            file: file, providerID: "codex", window: window, cache: &cache,
+            initial: .codex(CodexParseState(sessionID: file.deletingPathExtension().lastPathComponent))
+        ) { bytes, state in
+            // These are ASCII JSON keys; searching the raw bytes skips the
+            // large transcript lines without decoding them.
+            guard JSONLStreamer.contains(bytes, "token_count") || JSONLStreamer.contains(bytes, "session_meta")
+                    || JSONLStreamer.contains(bytes, "turn_context"),
+                  case .codex(var codex) = state else { return nil }
+            let event = consumeCodexLine(JSONLStreamer.string(bytes), state: &codex)
+            state = .codex(codex)
+            return event
         }
-        var model: String?
-        var sessionID = file.deletingPathExtension().lastPathComponent
-        var forkCutoff: String?
-        var prevCumulative: Int?
-        var prevInput = 0
-        var prevCached = 0
-        var prevCacheWrite = 0
-        var prevOutput = 0
-        var prevReasoning = 0
-        var parsed: [TokenConsumptionEvent] = []
-        var seenKeys = Set<String>()
-        JSONLStreamer.forEachLine(at: file) { line in
-            // These are ASCII JSON keys. Unicode substring search over transcript
-            // text dominated multi-day scans; libc searches the UTF-8 bytes directly.
-            guard line.withCString({ bytes in
-                strstr(bytes, "token_count") != nil || strstr(bytes, "session_meta") != nil
-                    || strstr(bytes, "turn_context") != nil
-            }) else { return }
-            switch TokenLogLineParser.codexRecord(from: line) {
-            case .sessionMeta(let name, let id, let forkedFrom, let timestamp):
-                if let name { model = name }
-                if let id { sessionID = id }
-                if let forkedFrom, !forkedFrom.isEmpty, let timestamp,
-                   let base = TokenConsumptionClock.parseTimestamp(timestamp) {
-                    forkCutoff = ISO8601DateFormatter().string(from: base.addingTimeInterval(5))
-                }
-            case .model(let name):
-                model = name
-            case .token(let date, let last, let total, let cumulativeTotal, let eventModel, let timestamp):
-                if let forkCutoff, let timestamp, timestamp < forkCutoff { return }
-                if let prevCumulative, cumulativeTotal == prevCumulative { return }
-                prevCumulative = cumulativeTotal
-                var inputTokens = 0
-                var cached = 0
-                var cacheWrite = 0
-                var output = 0
-                var reasoning = 0
-                if let last {
-                    inputTokens = last.input
-                    cached = last.cached
-                    cacheWrite = last.cacheWrite
-                    output = last.output
-                    reasoning = last.reasoning
-                } else if cumulativeTotal > 0, let total {
-                    inputTokens = total.input - prevInput
-                    cached = total.cached - prevCached
-                    cacheWrite = total.cacheWrite - prevCacheWrite
-                    output = total.output - prevOutput
-                    reasoning = total.reasoning - prevReasoning
-                }
-                if let total {
-                    prevInput = total.input
-                    prevCached = total.cached
-                    prevCacheWrite = total.cacheWrite
-                    prevOutput = total.output
-                    prevReasoning = total.reasoning
-                }
-                guard inputTokens + cached + output + reasoning > 0 else { return }
-                let uncached = max(0, inputTokens - cached)
-                let writeClamped = max(0, min(cacheWrite, uncached))
-                let resolved = eventModel ?? model ?? "gpt-5"
-                let billedWrite = writeClamped > 0
-                    && (CodeBurnPricing.getModelCosts(resolved)?.cacheWriteCostIsExplicit == true)
-                    ? writeClamped : 0
-                let billedInput = uncached - billedWrite
-                let dedup = "codex:\(sessionID):\(cumulativeTotal):\(total?.input ?? 0):\(total?.cached ?? 0):\(total?.output ?? 0):\(total?.reasoning ?? 0)"
-                if !seenKeys.insert(dedup).inserted { return }
-                parsed.append(TokenConsumptionEvent(
-                    providerID: "codex",
-                    date: date,
-                    model: resolved,
-                    totals: TokenUsageTotals(
-                        input: billedInput,
-                        output: output,
-                        cacheRead: cached,
-                        cacheWrite: billedWrite,
-                        reasoning: reasoning,
-                        outputIncludesReasoning: true
-                    )
-                ))
-            case .none:
-                break
-            }
-        }
-        cache.store(file: file, fingerprint: fingerprint, events: parsed)
-        return parsed.filter { window.contains($0.date) }
     }
 
-    static func cachedOrParse(
+    static func consumeCodexLine(_ line: String, state: inout CodexParseState) -> TokenConsumptionEvent? {
+        switch TokenLogLineParser.codexRecord(from: line) {
+        case .sessionMeta(let name, let id, let forkedFrom, let timestamp):
+            if let name { state.model = name }
+            if let id { state.sessionID = id }
+            if let forkedFrom, !forkedFrom.isEmpty, let timestamp,
+               let base = TokenConsumptionClock.parseTimestamp(timestamp) {
+                state.forkCutoff = ISO8601DateFormatter().string(from: base.addingTimeInterval(5))
+            }
+            return nil
+        case .model(let name):
+            state.model = name
+            return nil
+        case .token(let date, let last, let total, let cumulativeTotal, let eventModel, let timestamp):
+            if let forkCutoff = state.forkCutoff, let timestamp, timestamp < forkCutoff { return nil }
+            if let prevCumulative = state.prevCumulative, cumulativeTotal == prevCumulative { return nil }
+            state.prevCumulative = cumulativeTotal
+            var inputTokens = 0
+            var cached = 0
+            var cacheWrite = 0
+            var output = 0
+            var reasoning = 0
+            if let last {
+                inputTokens = last.input
+                cached = last.cached
+                cacheWrite = last.cacheWrite
+                output = last.output
+                reasoning = last.reasoning
+            } else if cumulativeTotal > 0, let total {
+                inputTokens = total.input - state.prevInput
+                cached = total.cached - state.prevCached
+                cacheWrite = total.cacheWrite - state.prevCacheWrite
+                output = total.output - state.prevOutput
+                reasoning = total.reasoning - state.prevReasoning
+            }
+            if let total {
+                state.prevInput = total.input
+                state.prevCached = total.cached
+                state.prevCacheWrite = total.cacheWrite
+                state.prevOutput = total.output
+                state.prevReasoning = total.reasoning
+            }
+            guard inputTokens + cached + output + reasoning > 0 else { return nil }
+            let uncached = max(0, inputTokens - cached)
+            let writeClamped = max(0, min(cacheWrite, uncached))
+            let resolved = eventModel ?? state.model ?? "gpt-5"
+            let billedWrite = writeClamped > 0
+                && (CodeBurnPricing.getModelCosts(resolved)?.cacheWriteCostIsExplicit == true)
+                ? writeClamped : 0
+            let billedInput = uncached - billedWrite
+            let dedup = "codex:\(state.sessionID):\(cumulativeTotal):\(total?.input ?? 0):\(total?.cached ?? 0):\(total?.output ?? 0):\(total?.reasoning ?? 0)"
+            if !state.seenKeys.insert(dedup).inserted { return nil }
+            return TokenConsumptionEvent(
+                providerID: "codex",
+                date: date,
+                model: resolved,
+                totals: TokenUsageTotals(
+                    input: billedInput,
+                    output: output,
+                    cacheRead: cached,
+                    cacheWrite: billedWrite,
+                    reasoning: reasoning,
+                    outputIncludesReasoning: true
+                )
+            )
+        case .none:
+            return nil
+        }
+    }
+
+    /// Parses a JSONL log, resuming from the last complete line when the file
+    /// has only grown since the previous scan in this process. A trailing line
+    /// without its newline is still being written: it is parsed on a copy of
+    /// the state so it counts now, and read again once complete.
+    static func incrementalParse(
         file: URL,
         providerID: String,
         window: TokenConsumptionWindow,
-        deps: Deps,
         cache: inout TokenLogDayCache,
-        parseLine: (String) -> [TokenConsumptionEvent]
+        initial: TokenLogDayCache.ParserState,
+        parseLine: (UnsafeRawBufferPointer, inout TokenLogDayCache.ParserState) -> TokenConsumptionEvent?
     ) -> [TokenConsumptionEvent] {
         let fingerprint = TokenLogDayCache.fingerprint(of: file)
         if let cached = cache.events(for: file, fingerprint: fingerprint, providerID: providerID, window: window) {
             return cached
         }
-        var parsed: [TokenConsumptionEvent] = []
-        JSONLStreamer.forEachLine(at: file) { line in
-            parsed.append(contentsOf: parseLine(line))
+        let identity = TokenLogDayCache.FileIdentity(of: file)
+        var state = initial
+        var complete: [TokenConsumptionEvent] = []
+        var offset: UInt64 = 0
+        if let tail = cache.tails[file.path], let identity, tail.identity == identity,
+           UInt64(fingerprint.size) >= tail.consumed,
+           let previous = cache.allEvents(for: file), previous.count >= tail.completeEventCount,
+           JSONLStreamer.byteBefore(tail.consumed, in: file) == 0x0A {
+            state = tail.state
+            complete = Array(previous.prefix(tail.completeEventCount))
+            offset = tail.consumed
         }
-        cache.store(file: file, fingerprint: fingerprint, events: parsed)
-        return parsed.filter { window.contains($0.date) }
+        let result = JSONLStreamer.forEachLineBytes(at: file, from: offset) { bytes in
+            if let event = parseLine(bytes, &state) { complete.append(event) }
+        }
+        var all = complete
+        if let trailing = result.trailing {
+            var provisional = state
+            trailing.withUnsafeBytes { bytes in
+                if let event = parseLine(bytes, &provisional) { all.append(event) }
+            }
+        }
+        cache.store(file: file, fingerprint: fingerprint, events: all)
+        if let identity {
+            cache.tails[file.path] = TokenLogDayCache.TailState(
+                identity: identity,
+                consumed: result.consumed,
+                completeEventCount: complete.count,
+                state: state
+            )
+        }
+        return all.filter { window.contains($0.date) }
     }
 
     static func directoryHasJSONL(_ root: URL) -> Bool {
@@ -508,70 +560,108 @@ private extension LocalTokenLogReader {
 /// Streaming JSONL reader. Does not load the whole file; skips oversized lines.
 enum JSONLStreamer {
     static let maxLineBytes = 1_048_576
+    private static let chunkBytes = 256 * 1024
 
     static func forEachLine(at url: URL, body: (String) -> Void) {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return }
+        let result = forEachLineBytes(at: url) { body(string($0)) }
+        if let trailing = result.trailing {
+            trailing.withUnsafeBytes { body(string($0)) }
+        }
+    }
+
+    /// Streams complete lines (trimmed, starting with `{`) from `offset`.
+    /// Returns the offset just past the last newline read, and the trailing
+    /// bytes of a final line that has no newline yet.
+    @discardableResult
+    static func forEachLineBytes(
+        at url: URL,
+        from offset: UInt64 = 0,
+        body: (UnsafeRawBufferPointer) -> Void
+    ) -> (consumed: UInt64, trailing: Data?) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return (offset, nil) }
         defer { try? handle.close() }
+        if offset > 0 {
+            do { try handle.seek(toOffset: offset) } catch { return (offset, nil) }
+        }
         var leftover = Data()
+        var leftoverStart = offset
         var discardingOversizedLine = false
-        // Foundation bridges each chunk/line through autoreleased objects.
-        // Without a per-chunk pool a long Swift task retains gigabytes of
-        // already-consumed transcript data until the entire scan returns.
+        // Foundation bridges each chunk through autoreleased objects. Without
+        // a per-chunk pool a long scan retains every consumed chunk.
         while autoreleasepool(invoking: { () -> Bool in
-            let chunk = handle.readData(ofLength: 64 * 1024)
+            let chunk = handle.readData(ofLength: chunkBytes)
             if chunk.isEmpty { return false }
             leftover.append(chunk)
-            let boundaries: [Int] = leftover.withUnsafeBytes { buffer in
-                guard let base = buffer.baseAddress else { return [] }
-                var offsets: [Int] = []
-                var offset = 0
-                while offset < buffer.count,
-                      let newline = memchr(base.advanced(by: offset), 0x0A, buffer.count - offset) {
-                    let found = base.distance(to: newline)
-                    offsets.append(found)
-                    offset = found + 1
+            var cursor = 0
+            leftover.withUnsafeBytes { buffer in
+                guard let base = buffer.baseAddress else { return }
+                while cursor < buffer.count,
+                      let newline = memchr(base.advanced(by: cursor), 0x0A, buffer.count - cursor) {
+                    let end = base.distance(to: newline)
+                    if !discardingOversizedLine, end - cursor <= maxLineBytes {
+                        emit(UnsafeRawBufferPointer(rebasing: buffer[cursor..<end]), body: body)
+                    }
+                    discardingOversizedLine = false
+                    cursor = end + 1
                 }
-                return offsets
-            }
-            var cursor = leftover.startIndex
-            for offset in boundaries {
-                let newline = leftover.startIndex + offset
-                if !discardingOversizedLine, newline - cursor <= maxLineBytes {
-                    emit(leftover.subdata(in: cursor..<newline), body: body)
-                }
-                discardingOversizedLine = false
-                cursor = newline + 1
             }
             // Compact once per chunk, not once per line (quadratic byte copying).
-            leftover.removeSubrange(leftover.startIndex..<cursor)
+            leftover.removeSubrange(leftover.startIndex..<(leftover.startIndex + cursor))
+            leftoverStart += UInt64(cursor)
             if leftover.count > maxLineBytes {
+                leftoverStart += UInt64(leftover.count)
                 leftover.removeAll(keepingCapacity: true)
                 discardingOversizedLine = true
             }
             return true
         }) {}
-        if !discardingOversizedLine, !leftover.isEmpty { emit(leftover, body: body) }
+        if discardingOversizedLine || leftover.isEmpty { return (leftoverStart, nil) }
+        return (leftoverStart, leftover)
     }
 
-    private static func emit(_ data: Data, body: (String) -> Void) {
-        guard data.count <= maxLineBytes,
-              let line = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .ascii)
-        else { return }
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("{") else { return }
-        body(trimmed)
+    private static func emit(_ line: UnsafeRawBufferPointer, body: (UnsafeRawBufferPointer) -> Void) {
+        var start = 0
+        var end = line.count
+        func isSpace(_ byte: UInt8) -> Bool { byte == 0x20 || byte == 0x09 || byte == 0x0D || byte == 0x0A }
+        while start < end, isSpace(line[start]) { start += 1 }
+        while end > start, isSpace(line[end - 1]) { end -= 1 }
+        guard start < end, line[start] == UInt8(ascii: "{") else { return }
+        body(UnsafeRawBufferPointer(rebasing: line[start..<end]))
+    }
+
+    static func contains(_ bytes: UnsafeRawBufferPointer, _ needle: StaticString) -> Bool {
+        guard let base = bytes.baseAddress, bytes.count >= needle.utf8CodeUnitCount else { return false }
+        return memmem(base, bytes.count, needle.utf8Start, needle.utf8CodeUnitCount) != nil
+    }
+
+    static func string(_ bytes: UnsafeRawBufferPointer) -> String {
+        String(decoding: bytes, as: UTF8.self)
+    }
+
+    /// The byte just before `offset`, used to confirm a resume point still
+    /// sits at a line boundary (the file was appended to, not rewritten).
+    static func byteBefore(_ offset: UInt64, in url: URL) -> UInt8? {
+        guard offset > 0, let handle = try? FileHandle(forReadingFrom: url) else { return offset == 0 ? 0x0A : nil }
+        defer { try? handle.close() }
+        guard (try? handle.seek(toOffset: offset - 1)) != nil else { return nil }
+        return handle.readData(ofLength: 1).first
     }
 }
 
 /// Daily event cache so week/month does not reread unchanged JSONL.
-/// Stores only provider, day, model, and token counts — never session text.
-struct TokenLogDayCache: Equatable, Codable, Sendable {
-    // Astra now has explicit cache-write pricing; reparse old input/cache splits.
-    var version = 5
+/// Stores only provider, time, model, and token counts — never session text.
+struct TokenLogDayCache: Codable, Sendable {
+    // 6: events are compact arrays and drop the derived day key. Version 5
+    // files hold the same data in keyed form and are still read.
+    var version = 6
+    static let readableVersions: Set<Int> = [5, 6]
     static let readLimit = 128 * 1024 * 1024
     var files: [String: FileEntry] = [:] { didSet { needsSave = true } }
+    /// In-memory resume points for growing logs; never written to disk. After
+    /// a relaunch a changed file is parsed once from the start.
+    var tails: [String: TailState] = [:]
     private var needsSave = false
+    private var lastSavedAt: Date?
     private enum CodingKeys: String, CodingKey { case version, files }
 
     struct FileEntry: Equatable, Codable, Sendable {
@@ -582,7 +672,6 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
 
     struct StoredEvent: Equatable, Codable, Sendable {
         var providerID: String
-        var day: String
         var timestamp: TimeInterval
         var model: String?
         var input: Int
@@ -591,11 +680,92 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
         var cacheWrite: Int
         var reasoning: Int
         var outputIncludesReasoning: Bool
+
+        init(providerID: String, timestamp: TimeInterval, model: String?, input: Int, output: Int,
+             cacheRead: Int, cacheWrite: Int, reasoning: Int, outputIncludesReasoning: Bool) {
+            self.providerID = providerID
+            self.timestamp = timestamp
+            self.model = model
+            self.input = input
+            self.output = output
+            self.cacheRead = cacheRead
+            self.cacheWrite = cacheWrite
+            self.reasoning = reasoning
+            self.outputIncludesReasoning = outputIncludesReasoning
+        }
+
+        private enum LegacyKeys: String, CodingKey {
+            case providerID, timestamp, model, input, output, cacheRead, cacheWrite, reasoning, outputIncludesReasoning
+        }
+
+        /// v6 array: [provider, timestamp, model|null, input, output, cacheRead, cacheWrite, reasoning, 0|1].
+        init(from decoder: Decoder) throws {
+            if var row = try? decoder.unkeyedContainer() {
+                providerID = try row.decode(String.self)
+                timestamp = try row.decode(TimeInterval.self)
+                model = try row.decodeIfPresent(String.self)
+                input = try row.decode(Int.self)
+                output = try row.decode(Int.self)
+                cacheRead = try row.decode(Int.self)
+                cacheWrite = try row.decode(Int.self)
+                reasoning = try row.decode(Int.self)
+                outputIncludesReasoning = try row.decode(Int.self) != 0
+                return
+            }
+            let keyed = try decoder.container(keyedBy: LegacyKeys.self)
+            providerID = try keyed.decode(String.self, forKey: .providerID)
+            timestamp = try keyed.decode(TimeInterval.self, forKey: .timestamp)
+            model = try keyed.decodeIfPresent(String.self, forKey: .model)
+            input = try keyed.decode(Int.self, forKey: .input)
+            output = try keyed.decode(Int.self, forKey: .output)
+            cacheRead = try keyed.decode(Int.self, forKey: .cacheRead)
+            cacheWrite = try keyed.decode(Int.self, forKey: .cacheWrite)
+            reasoning = try keyed.decode(Int.self, forKey: .reasoning)
+            outputIncludesReasoning = try keyed.decode(Bool.self, forKey: .outputIncludesReasoning)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var row = encoder.unkeyedContainer()
+            try row.encode(providerID)
+            try row.encode(timestamp)
+            if let model { try row.encode(model) } else { try row.encodeNil() }
+            try row.encode(input)
+            try row.encode(output)
+            try row.encode(cacheRead)
+            try row.encode(cacheWrite)
+            try row.encode(reasoning)
+            try row.encode(outputIncludesReasoning ? 1 : 0)
+        }
     }
 
     struct Fingerprint: Equatable {
         var size: Int
         var mtime: TimeInterval
+    }
+
+    /// Device + inode: a log replaced by a new file must not be resumed.
+    struct FileIdentity: Equatable, Sendable {
+        var device: UInt64
+        var inode: UInt64
+
+        init?(of url: URL) {
+            var info = stat()
+            guard stat(url.path, &info) == 0 else { return nil }
+            device = UInt64(bitPattern: Int64(info.st_dev))
+            inode = UInt64(info.st_ino)
+        }
+    }
+
+    enum ParserState: Sendable, Equatable {
+        case none
+        case codex(LocalTokenLogReader.CodexParseState)
+    }
+
+    struct TailState: Sendable, Equatable {
+        var identity: FileIdentity
+        var consumed: UInt64
+        var completeEventCount: Int
+        var state: ParserState
     }
 
     static func fingerprint(of url: URL) -> Fingerprint {
@@ -606,37 +776,78 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
         )
     }
 
-    static func load(from url: URL?) -> TokenLogDayCache {
+    static func load(from url: URL?, now: Date = Date()) -> TokenLogDayCache {
         guard let url,
               FileManager.default.fileExists(atPath: url.path),
               let data = try? SafeFile.read(from: url.path, maxBytes: Self.readLimit),
-              let decoded = try? JSONDecoder().decode(TokenLogDayCache.self, from: data),
-              decoded.version == 5
+              var decoded = try? JSONDecoder().decode(TokenLogDayCache.self, from: data),
+              readableVersions.contains(decoded.version)
         else { return TokenLogDayCache() }
+        // A v5 file is rewritten in the compact form on the next save.
+        decoded.needsSave = decoded.version != 6
+        decoded.version = 6
+        decoded.lastSavedAt = now
         return decoded
     }
 
-    mutating func save(to url: URL?) {
+    /// Writes when there are pending changes and `interval` has passed since
+    /// the last write (or load). `interval` 0 writes every time.
+    mutating func saveIfDue(to url: URL?, interval: TimeInterval, now: Date = Date()) {
+        if interval > 0, let lastSavedAt, now.timeIntervalSince(lastSavedAt) < interval { return }
+        save(to: url, now: now)
+    }
+
+    mutating func save(to url: URL?, now: Date = Date()) {
         guard needsSave, let url else { return }
         do {
-            // Encode one log entry at a time so Foundation's intermediate JSON
-            // objects do not scale with the entire historical cache.
-            var data = Data("{\"version\":\(version),\"files\":{".utf8)
-            let encoder = JSONEncoder()
-            for (index, entry) in files.enumerated() {
-                try autoreleasepool {
-                    if index > 0 { data.append(0x2C) }
-                    data.append(try encoder.encode(entry.key))
-                    data.append(0x3A)
-                    data.append(try encoder.encode(entry.value))
-                }
-            }
-            data.append(contentsOf: "}}".utf8)
-            try SafeFile.write(data, to: url.path)
+            try SafeFile.write(encoded(), to: url.path)
             needsSave = false
+            lastSavedAt = now
         } catch {
             return
         }
+    }
+
+    /// Hand-written JSON: JSONEncoder spent seconds per write boxing ~500k
+    /// events. Numbers and escaped strings go straight into one buffer.
+    func encoded() -> Data {
+        var out = [UInt8]()
+        out.reserveCapacity(files.count * 256)
+        func append(_ text: String) { out.append(contentsOf: text.utf8) }
+        func appendString(_ value: String) {
+            out.append(0x22)
+            for byte in value.utf8 {
+                switch byte {
+                case 0x22: out.append(contentsOf: [0x5C, 0x22])
+                case 0x5C: out.append(contentsOf: [0x5C, 0x5C])
+                case 0x0A: out.append(contentsOf: [0x5C, 0x6E])
+                case 0x0D: out.append(contentsOf: [0x5C, 0x72])
+                case 0x09: out.append(contentsOf: [0x5C, 0x74])
+                case 0..<0x20: append(String(format: "\\u%04x", byte))
+                default: out.append(byte)
+                }
+            }
+            out.append(0x22)
+        }
+        append("{\"version\":\(version),\"files\":{")
+        var firstFile = true
+        for (path, entry) in files {
+            if !firstFile { out.append(0x2C) }
+            firstFile = false
+            appendString(path)
+            append(":{\"size\":\(entry.size),\"mtime\":\(entry.mtime),\"events\":[")
+            for (index, event) in entry.events.enumerated() {
+                if index > 0 { out.append(0x2C) }
+                out.append(0x5B)
+                appendString(event.providerID)
+                append(",\(event.timestamp),")
+                if let model = event.model { appendString(model) } else { append("null") }
+                append(",\(event.input),\(event.output),\(event.cacheRead),\(event.cacheWrite),\(event.reasoning),\(event.outputIncludesReasoning ? 1 : 0)]")
+            }
+            append("]}")
+        }
+        append("}}")
+        return Data(out)
     }
 
     func events(for file: URL, fingerprint: Fingerprint, providerID: String, window: TokenConsumptionWindow? = nil) -> [TokenConsumptionEvent]? {
@@ -650,20 +861,13 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
                (stored.timestamp < window.start.timeIntervalSince1970 || stored.timestamp > window.end.timeIntervalSince1970) {
                 return nil
             }
-            return TokenConsumptionEvent(
-                providerID: stored.providerID,
-                date: Date(timeIntervalSince1970: stored.timestamp),
-                model: stored.model,
-                totals: TokenUsageTotals(
-                    input: stored.input,
-                    output: stored.output,
-                    cacheRead: stored.cacheRead,
-                    cacheWrite: stored.cacheWrite,
-                    reasoning: stored.reasoning,
-                    outputIncludesReasoning: stored.outputIncludesReasoning
-                )
-            )
+            return stored.event
         }
+    }
+
+    /// Every stored event for a file regardless of fingerprint, for resuming.
+    func allEvents(for file: URL) -> [TokenConsumptionEvent]? {
+        files[file.path]?.events.map(\.event)
     }
 
     mutating func store(file: URL, fingerprint: Fingerprint, events: [TokenConsumptionEvent]) {
@@ -673,7 +877,6 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
             events: events.map { event in
                 StoredEvent(
                     providerID: event.providerID,
-                    day: TokenConsumptionClock.dayKey(event.date),
                     timestamp: event.date.timeIntervalSince1970,
                     model: event.model,
                     input: event.totals.input,
@@ -684,6 +887,31 @@ struct TokenLogDayCache: Equatable, Codable, Sendable {
                     outputIncludesReasoning: event.totals.outputIncludesReasoning
                 )
             }
+        )
+    }
+}
+
+extension TokenLogDayCache: Equatable {
+    /// Persisted content only; resume points and save bookkeeping are transient.
+    static func == (lhs: TokenLogDayCache, rhs: TokenLogDayCache) -> Bool {
+        lhs.version == rhs.version && lhs.files == rhs.files
+    }
+}
+
+private extension TokenLogDayCache.StoredEvent {
+    var event: TokenConsumptionEvent {
+        TokenConsumptionEvent(
+            providerID: providerID,
+            date: Date(timeIntervalSince1970: timestamp),
+            model: model,
+            totals: TokenUsageTotals(
+                input: input,
+                output: output,
+                cacheRead: cacheRead,
+                cacheWrite: cacheWrite,
+                reasoning: reasoning,
+                outputIncludesReasoning: outputIncludesReasoning
+            )
         )
     }
 }

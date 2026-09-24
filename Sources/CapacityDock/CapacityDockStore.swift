@@ -25,7 +25,10 @@ final class CapacityDockStore: CapacityDockQuotaReading {
     private(set) var loading: Set<String> = []
     var overlayURL: URL
     private var refreshTimer: Timer?
-    private var refreshGeneration: UInt64 = 0
+    /// Background refresh skips a provider until its next due time, so
+    /// providers that are not set up are not probed (ps, lsof, keychain,
+    /// network) every minute.
+    private var nextRefresh: [String: Date] = [:]
 
     init(summaries: [String: QuotaSummary], overlayURL: URL? = nil) {
         self.summaries = summaries
@@ -126,12 +129,17 @@ final class CapacityDockStore: CapacityDockQuotaReading {
         await refresh(provider, userInitiated: true)
     }
 
-    func refreshLiveProviders(userInitiated: Bool) async {
-        let generation = refreshGeneration
-        for id in Self.liveProviderIDs.sorted() {
-            guard let provider = CapacityDockProvider(rawValue: id) else { continue }
-            await refresh(provider, userInitiated: userInitiated)
-            guard generation == refreshGeneration else { return }
+    /// Providers are independent, so they refresh concurrently: one slow or
+    /// timing-out service no longer delays every ring behind it.
+    func refreshLiveProviders(userInitiated: Bool, now: Date = Date()) async {
+        let due = Self.liveProviderIDs.sorted().compactMap(CapacityDockProvider.init(rawValue:)).filter {
+            userInitiated || LiveRefreshSchedule.isDue(nextRefresh[$0.id], now: now)
+        }
+        guard !due.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            for provider in due {
+                group.addTask { await self.refresh(provider, userInitiated: userInitiated) }
+            }
         }
         applyOverlayIfPresent()
         notifyQuotaChanged()
@@ -201,6 +209,9 @@ final class CapacityDockStore: CapacityDockQuotaReading {
                 previous: previous
             )
         }
+        nextRefresh[provider.id] = Date().addingTimeInterval(
+            LiveRefreshSchedule.interval(after: summaries[provider.id]?.connection)
+        )
         if userInitiated {
             applyOverlayIfPresent()
             notifyQuotaChanged()
@@ -467,5 +478,25 @@ enum DemoQuota {
                 footerLines: []
             )
         ]
+    }
+}
+
+/// How soon a provider is polled again, from how its last refresh went.
+/// User-initiated refreshes (Connect, Refresh) always run immediately.
+enum LiveRefreshSchedule {
+    static func interval(after connection: QuotaSummary.Connection?) -> TimeInterval {
+        switch connection {
+        case .connected, .stale, .loading: 60
+        case .transientFailure: 120
+        // Nothing to show until the user signs in; still noticed within minutes.
+        case .disconnected, .none: 300
+        // Needs the user to reconnect; retrying every minute cannot fix it.
+        case .terminalFailure: 600
+        }
+    }
+
+    static func isDue(_ next: Date?, now: Date) -> Bool {
+        guard let next else { return true }
+        return now >= next
     }
 }

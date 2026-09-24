@@ -204,7 +204,7 @@ struct TokenConsumptionTests {
         #expect(row.unpricedEventCount == 0)
         // Output already includes reasoning: 150 + 10 + 62.5 + 300 microdollars.
         #expect(abs((row.estimatedUSD ?? 0) - 0.0005225) < 1e-10)
-        #expect(TokenLogDayCache.load(from: cacheURL).version == 5)
+        #expect(TokenLogDayCache.load(from: cacheURL).version == 6)
         let cached = LocalTokenLogReader.load(period: .today, deps: deps)
         #expect(cached == snapshot)
     }

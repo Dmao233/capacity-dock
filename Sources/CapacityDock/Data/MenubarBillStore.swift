@@ -162,6 +162,13 @@ final class MenubarBillStore {
         _ = await snapshot(for: .today, force: force)
     }
 
+    /// Writes any unsaved cache changes. Scans save at most every ten
+    /// minutes, so quitting flushes the rest. Not main-actor isolated, so
+    /// termination can wait on it without deadlocking the main thread.
+    nonisolated static func flushCache() async {
+        await LocalBillLoader.shared.flush()
+    }
+
     /// All periods share one on-disk file cache. Serial reads prevent a small
     /// Today scan from overwriting a concurrently completed historical cache.
     private actor LocalBillLoader {
@@ -180,6 +187,11 @@ final class MenubarBillStore {
                 }
                 return LocalTokenLogReader.load(period: period, deps: deps, cache: &cache, window: activity ? TokenConsumptionClock.activityWindow(now: now, timeZone: timeZone) : nil)
             }
+        }
+
+        func flush() {
+            guard loadedCache else { return }
+            cache.save(to: LocalTokenLogReader.Deps.live().cacheURL)
         }
     }
 
