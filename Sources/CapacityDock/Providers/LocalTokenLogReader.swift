@@ -670,8 +670,11 @@ enum JSONLStreamer {
 struct TokenLogDayCache: Codable, Sendable {
     // 6: events are compact arrays and drop the derived day key. Version 5
     // files hold the same data in keyed form and are still read.
-    var version = 6
-    static let readableVersions: Set<Int> = [5, 6]
+    // 7: gpt-6-sol gained explicit cache-write pricing, which changes how its
+    // Codex input/cache split is parsed; only files containing it are reread.
+    var version = 7
+    static let readableVersions: Set<Int> = [5, 6, 7]
+    private static let repricedModels: [(version: Int, models: Set<String>)] = [(7, ["gpt-6-sol"])]
     static let readLimit = 128 * 1024 * 1024
     var files: [String: FileEntry] = [:] { didSet { needsSave = true } }
     /// In-memory resume points for growing logs; never written to disk. After
@@ -801,9 +804,19 @@ struct TokenLogDayCache: Codable, Sendable {
               var decoded = try? JSONDecoder().decode(TokenLogDayCache.self, from: data),
               readableVersions.contains(decoded.version)
         else { return TokenLogDayCache() }
-        // A v5 file is rewritten in the compact form on the next save.
-        decoded.needsSave = decoded.version != 6
-        decoded.version = 6
+        let stale = repricedModels.filter { decoded.version < $0.version }.reduce(into: Set<String>()) { $0.formUnion($1.models) }
+        if !stale.isEmpty {
+            decoded.files = decoded.files.filter { _, entry in
+                // Compare catalog keys: "openai/gpt-6-sol" and dated ids were
+                // parsed with the same (old) rates as the bare name.
+                !entry.events.contains { event in
+                    event.model.flatMap(CodeBurnPricing.matchedSnapshotKey).map(stale.contains) ?? false
+                }
+            }
+        }
+        // Older files are rewritten in the current form on the next save.
+        decoded.needsSave = decoded.version != 7
+        decoded.version = 7
         decoded.lastSavedAt = now
         return decoded
     }

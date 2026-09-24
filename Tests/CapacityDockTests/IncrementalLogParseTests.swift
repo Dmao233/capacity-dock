@@ -99,7 +99,7 @@ struct IncrementalLogParseTests {
         #expect(totals(snapshot)["claude"] == 7)
     }
 
-    @Test("Legacy keyed v5 cache still loads and saves compactly as v6")
+    @Test("Legacy keyed v5 cache still loads and saves compactly as v7")
     func legacyCacheLoads() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("legacy-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -108,7 +108,7 @@ struct IncrementalLogParseTests {
         let legacy = #"{"version":5,"files":{"/x/a.jsonl":{"size":3,"mtime":2,"events":[{"providerID":"codex","day":"2026-09-07","timestamp":100,"model":"gpt-5","input":7,"output":1,"cacheRead":0,"cacheWrite":0,"reasoning":0,"outputIncludesReasoning":true}]}}}"#
         try Data(legacy.utf8).write(to: url)
         var cache = TokenLogDayCache.load(from: url)
-        #expect(cache.version == 6)
+        #expect(cache.version == 7)
         #expect(cache.files["/x/a.jsonl"]?.events.first?.input == 7)
         cache.save(to: url)
         let text = try String(contentsOf: url, encoding: .utf8)
