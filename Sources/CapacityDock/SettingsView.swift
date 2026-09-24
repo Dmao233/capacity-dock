@@ -7,6 +7,7 @@ struct CapacityDockSettingsView: View {
     @Environment(\.colorScheme) private var systemScheme
     private var scheme: ColorScheme { appearance == "dark" ? .dark : appearance == "light" ? .light : systemScheme }
     private var accent: Color { CapacityDockInterfacePalette.accent(scheme) }
+    private static let windowBackground = Color(nsColor: .windowBackgroundColor)
     @State private var searchText = ""
     @State private var snapshot = CapacityDockPreferences.load()
 
@@ -49,7 +50,7 @@ struct CapacityDockSettingsView: View {
             sidebar
                 .frame(width: Self.sidebarWidth)
                 .background {
-                    CapacityDockInterfacePalette.sidebar(scheme).ignoresSafeArea()
+                    SettingsSidebarMaterial().ignoresSafeArea()
                 }
 
             Divider()
@@ -59,7 +60,7 @@ struct CapacityDockSettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: Self.windowWidth, minHeight: Self.windowHeight)
-        .background(CapacityDockInterfacePalette.surface(scheme))
+        .background(Self.windowBackground)
         .tint(accent)
         .accentColor(accent)
         .environment(\.colorScheme, scheme)
@@ -94,20 +95,20 @@ struct CapacityDockSettingsView: View {
                         pane: "general",
                         title: NSLocalizedString("General", comment: ""),
                         systemImage: "gearshape.fill",
-                        color: accent
+                        color: .gray
                     )
                     SettingsSidebarPaneRow(
                         pane: "about",
                         title: NSLocalizedString("About", comment: ""),
                         systemImage: "info.circle.fill",
-                        color: accent
+                        color: .blue
                     )
-                    SettingsSidebarPaneRow(pane: "api-balance", title: "API 账户", systemImage: "creditcard.fill", color: accent)
+                    SettingsSidebarPaneRow(pane: "api-balance", title: "API 账户", systemImage: "creditcard.fill", color: .green)
                     SettingsSidebarPaneRow(
                         pane: "usage",
                         title: NSLocalizedString("Usage", comment: ""),
-                        systemImage: "list.bullet.rectangle.fill",
-                        color: accent
+                        systemImage: "chart.bar.fill",
+                        color: .purple
                     )
                 }
                 Section {
@@ -181,22 +182,18 @@ struct CapacityDockSettingsView: View {
 }
 
 private struct SettingsIconChip: View {
-    static let side: CGFloat = 20
+    static let side: CGFloat = 22
     let systemImage: String
     let color: Color
 
     var body: some View {
         Image(systemName: systemImage)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: Self.side, height: Self.side)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(LinearGradient(
-                        colors: [color.opacity(0.85), color],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(color.gradient)
             )
             .accessibilityHidden(true)
     }
@@ -254,8 +251,13 @@ private struct SettingsSidebarBrandIcon: View {
                     .scaledToFit()
             }
         }
-        .frame(width: 16, height: 16)
+        .frame(width: 14, height: 14)
         .foregroundStyle(isConnected ? .primary : .secondary)
+        .frame(width: 22, height: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+        )
         .accessibilityHidden(true)
     }
 }
@@ -332,8 +334,7 @@ private final class SettingsWindowStyleView: NSView {
         if window.appearance?.name != desiredAppearance {
             window.appearance = desiredAppearance.flatMap { NSAppearance(named: $0) }
         }
-        let background = NSColor(CapacityDockInterfacePalette.surface(scheme))
-        if window.backgroundColor != background { window.backgroundColor = background }
+        if window.backgroundColor != .windowBackgroundColor { window.backgroundColor = .windowBackgroundColor }
     }
 }
 
@@ -1025,3 +1026,16 @@ private struct RingPreview: View {
     }
 }
 
+/// The system sidebar material, so the settings sidebar matches Finder and
+/// System Settings instead of a flat custom fill.
+private struct SettingsSidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
