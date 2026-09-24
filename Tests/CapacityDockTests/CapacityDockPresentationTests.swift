@@ -23,7 +23,7 @@ struct CapacityDockPresentationTests {
         #expect(CapacityDockMetrics.settingsCapGap(scale: 1) == 2)
         #expect(CapacityDockMetrics.settingsCapDetachedGap(scale: 1) == 8)
         #expect(CapacityDockMetrics.settingsCapOrbSize(scale: 1) == 44)
-        #expect(CapacityDockMetrics.settingsCapSlot(scale: 1) == 12)
+        #expect(CapacityDockMetrics.settingsCapSlot(scale: 1) == 31)
         #expect(CapacityDockMetrics.settingsCapDetachedSlot(scale: 1) == 52)
     }
 

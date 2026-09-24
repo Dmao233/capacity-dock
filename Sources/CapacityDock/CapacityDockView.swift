@@ -29,8 +29,12 @@ enum CapacityDockMetrics {
     private static let basePercentageTextSize: CGFloat = 12
     private static let baseDetailWidth: CGFloat = 280
     private static let baseSettingsCapGap: CGFloat = 2
-    /// Extra panel past the tail so the nested settings orb can peek out of the scoop.
-    private static let baseSettingsCapPeek: CGFloat = 12
+    /// Extra panel past the tail for the settings orb, which hangs from the
+    /// notch-sized neck: orb (44) less the flare it overlaps (6/32 of 72).
+    private static let baseSettingsCapPeek: CGFloat = 31
+    /// Docked rings keep this much more than the floating pad from the
+    /// neck, so a one-ring rail keeps its original proportions.
+    private static let baseDockedRingClearance: CGFloat = 9
     private static let baseSettingsCapDetachedGap: CGFloat = 8
 
     /// Every dock dimension lands on a whole point. Fractional sizes (85%
@@ -73,6 +77,7 @@ enum CapacityDockMetrics {
         return min(ceil(contentHeight + padding), max(0, availableHeight)).rounded(.down)
     }
     static func settingsCapGap(scale: CGFloat) -> CGFloat { points(baseSettingsCapGap, scale) }
+    static func dockedRingClearance(scale: CGFloat) -> CGFloat { points(baseDockedRingClearance, scale) }
     static func settingsCapDetachedGap(scale: CGFloat) -> CGFloat {
         points(baseSettingsCapDetachedGap, scale)
     }
@@ -460,19 +465,13 @@ final class CapacityDockViewModel {
         let eased = p * p * (3 - 2 * p)
         return railWidth * CapacityDockRailShape.notchConcaveRatio * eased
     }
-    /// Keep first/last rings out of the scooped corners and the nested
-    /// settings orb. Derived from flare depth (not live contactR) so it
-    /// cannot recurse through restLength.
+    /// Keep first/last rings out of the necked ends. The settings orb hangs
+    /// past the body end, so it needs no room here. Derived from flare depth
+    /// (not live contactR) so it cannot recurse through restLength.
     var railAlongPad: CGFloat {
-        let pad = CapacityDockMetrics.railAlongPad(scale: scale)
-        let base = pad + flareCompensation
+        let base = CapacityDockMetrics.railAlongPad(scale: scale) + flareCompensation
         guard flareCompensation > 1 else { return base }
-        let orb = CapacityDockMetrics.settingsCapOrbSize(scale: scale)
-        // Same nest as `CapacityDockSettingsCapShape.gearRect`: the orb's
-        // centre sits this far in from the body end. Rings clear its far
-        // edge by the normal padding.
-        let nest = min(max(flareCompensation * 0.33, orb * 0.25), orb * 0.4)
-        return max(base, nest + orb / 2 + pad)
+        return base + CapacityDockMetrics.dockedRingClearance(scale: scale)
     }
     var railCrossPad: CGFloat { CapacityDockMetrics.railCrossPad(scale: scale) }
     var detailWidth: CGFloat {
@@ -882,9 +881,10 @@ struct CapacityDockSettingsCapShape: Shape {
         if contactR <= 1 {
             return detachedGearRect
         }
-        // Figma: orb sits in the tail scoop, slightly toward the flush edge,
-        // center ~0.33 contactR in from the tail — not below the bounding box.
-        let nest = min(max(contactR * 0.33, orbSize * 0.25), orbSize * 0.4)
+        // The orb hangs from the neck, slightly toward the flush edge: its
+        // near edge meets the start of the flare and the rest sits past the
+        // body end, in the panel's cap slot. (Negative nest = past the end.)
+        let nest = contactR - orbSize / 2
         let shift = orbSize * 0.20
         let half = orbSize / 2
         let fromStart = expansionAnchor.packsFromStart
@@ -1814,21 +1814,19 @@ struct CapacityDockRailShape: Shape {
         // The system-notch technique (Helm / notchi): one quad curve per corner,
         // control point at the corner. Free (left) side has convex rounded
         // corners; the contact (right) side necks concavely into the touched
-        // edge when docked. Both radii follow the MacBook notch's proportions
-        // (see `notchConvexRatio`) and are clamped below half the length, so
-        // the two shoulders never meet or swallow the gauge.
+        // edge when docked. The contact flare follows the MacBook notch's
+        // proportions (see `notchConcaveRatio`); both radii are clamped below
+        // half the length, so the shoulders never meet or swallow the gauge.
         // freeR: convex rounded corners on the free (left) side. contactR: the
         // small concave flare where the body necks out to the flush contact
         // (right) edge — the body is inset from top and bottom by contactR, and
         // the flare connects that inset to the flush corner (Helm's structure).
         let referenceLength = restLength ?? bodyLength ?? rect.height
-        let freeR = min(bodyWidth * Self.notchConvexRatio, referenceLength / 2, bodyWidth * 0.45)
+        let freeR = Self.freeRadius(bodyWidth: bodyWidth, restLength: referenceLength)
         // Not attached to an edge: a plain rounded pill, every corner rounded.
         // The concave contact-edge flares only exist once docked.
         if eased < 0.5 {
-            // Floating, it is not a notch: keep the smaller pill radius so the
-            // flip to the docked outline at the midpoint stays a small step.
-            return Path(roundedRect: rect, cornerRadius: min(22, referenceLength / 2, bodyWidth * 0.45))
+            return Path(roundedRect: rect, cornerRadius: freeR)
         }
         // Scoop depth is taken from the resting length, not the live height, so
         // hover-expand only lengthens the midsection. The top curve stays put.
@@ -1868,12 +1866,17 @@ struct CapacityDockRailShape: Shape {
         return path
     }
 
-    /// MacBook notch proportions: about 32 pt deep, 14 pt radius on its
-    /// free corners and a 6 pt flare where it meets the bezel. The rail's
-    /// depth from the screen edge is its width, so both radii scale with it
-    /// (72 pt wide → 31.5 pt convex, 13.5 pt concave).
-    static let notchConvexRatio: CGFloat = 14.0 / 32.0
+    /// The MacBook notch meets the bezel with a ~6 pt flare on a ~32 pt deep
+    /// cut-out. The flare depends on depth alone, and the rail's depth from
+    /// the screen edge is its width, so it scales with that (72 pt → 13.5 pt).
     static let notchConcaveRatio: CGFloat = 6.0 / 32.0
+
+    /// Free-side corners stay small against the long body, like the notch's
+    /// corners against its 200 pt span. Scaling them by depth instead (14/32
+    /// of the width) swallowed half of a single-ring rail's straight edge.
+    static func freeRadius(bodyWidth: CGFloat, restLength: CGFloat) -> CGFloat {
+        min(22, restLength / 2, bodyWidth * 0.45)
+    }
 
     static func contactRadius(
         bodyWidth: CGFloat,
@@ -1882,7 +1885,7 @@ struct CapacityDockRailShape: Shape {
     ) -> CGFloat {
         let eased = ease(attachmentProgress)
         if eased < 0.5 { return 0 }
-        let freeR = min(bodyWidth * notchConvexRatio, restLength / 2, bodyWidth * 0.45)
+        let freeR = freeRadius(bodyWidth: bodyWidth, restLength: restLength)
         return min(
             bodyWidth * notchConcaveRatio,
             restLength * 0.22,
