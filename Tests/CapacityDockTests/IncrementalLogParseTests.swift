@@ -83,6 +83,22 @@ struct IncrementalLogParseTests {
         #expect(totals(snapshot)["claude"] == 101)
     }
 
+    @Test("A log rewritten in place is parsed from the start, not resumed")
+    func rewrittenInPlaceRestarts() throws {
+        let root = try home()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let claude = root.appendingPathComponent(".claude/projects/demo/session.jsonl")
+        try (claudeLine(1, input: 5) + "\n").write(to: claude, atomically: false, encoding: .utf8)
+        let deps = LocalTokenLogReader.Deps(home: root, now: now, timeZone: .gmt, cacheURL: nil)
+        var resident = TokenLogDayCache()
+        _ = LocalTokenLogReader.load(period: .today, deps: deps, cache: &resident)
+        // Same inode, same first-line length (so the old offset still lands
+        // after a newline), different content.
+        try (claudeLine(1, input: 6) + "\n" + claudeLine(2, input: 1) + "\n").write(to: claude, atomically: false, encoding: .utf8)
+        let snapshot = LocalTokenLogReader.load(period: .today, deps: deps, cache: &resident)
+        #expect(totals(snapshot)["claude"] == 7)
+    }
+
     @Test("Legacy keyed v5 cache still loads and saves compactly as v6")
     func legacyCacheLoads() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("legacy-\(UUID())")

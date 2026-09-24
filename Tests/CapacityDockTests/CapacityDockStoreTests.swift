@@ -70,6 +70,20 @@ struct LiveRefreshScheduleTests {
         let now = Date(timeIntervalSince1970: 1_000)
         #expect(LiveRefreshSchedule.isDue(nil, now: now))
         #expect(LiveRefreshSchedule.isDue(now, now: now))
-        #expect(!LiveRefreshSchedule.isDue(now.addingTimeInterval(1), now: now))
+        #expect(LiveRefreshSchedule.isDue(now.addingTimeInterval(1), now: now))
+        #expect(!LiveRefreshSchedule.isDue(now.addingTimeInterval(LiveRefreshSchedule.tickSlack + 1), now: now))
+    }
+
+    @Test("A slow refresh is still due on the next timer tick")
+    func deadlineFromCycleStart() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let deadline = LiveRefreshSchedule.deadline(after: .connected, startedAt: start)
+        // The request took 10 s; the next 60 s tick must still pick it up.
+        #expect(LiveRefreshSchedule.isDue(deadline, now: start.addingTimeInterval(60)))
+        // A tick that fires a second early (timer tolerance) still counts.
+        #expect(LiveRefreshSchedule.isDue(deadline, now: start.addingTimeInterval(59)))
+        #expect(!LiveRefreshSchedule.isDue(deadline, now: start.addingTimeInterval(30)))
+        let terminal = LiveRefreshSchedule.deadline(after: .terminalFailure(reason: nil), startedAt: start)
+        #expect(LiveRefreshSchedule.isDue(terminal, now: start.addingTimeInterval(600)))
     }
 }
