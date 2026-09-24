@@ -100,7 +100,7 @@ xattr -d com.apple.quarantine /Applications/CapacityDock.app
 git clone https://github.com/Dmao233/capacity-dock.git
 cd capacity-dock
 swift test
-Scripts/package-app.sh 0.3.3
+Scripts/package-app.sh 0.3.4
 open .build/dist/CapacityDock.app
 ```
 
